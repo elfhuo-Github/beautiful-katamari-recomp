@@ -1,4 +1,9 @@
 // beautiful_katamari - native renderer hook layer (implementation).
+//
+// Hooks Beautiful Katamari's guest render entry points to capture per-draw
+// state for debugging/analysis. Does NOT replace the emulated GPU output -
+// the xenos GPU plugin renders normally. The hooks capture data for
+// analysis/debugging without interfering with the emulated output.
 
 #include "bk_native_render.h"
 #include "bk_native_scene.h"
@@ -22,6 +27,7 @@
 #include <rex/logging.h>
 
 namespace bk::native_render {
+
 REXCVAR_DEFINE_BOOL(
     bk_native_render, true, "Beautiful Katamari",
     "Enable the Beautiful Katamari native renderer hook layer. The guest "
@@ -102,19 +108,213 @@ bool IsNativeRenderEnabled() { return rex::cvar::GetFlagByName("bk_native_render
 
 bool IsNativeRenderSceneEnabled() { return rex::cvar::GetFlagByName("bk_native_render_scene") == "true"; }
 
-}  // namespace bk::native_render
+//------------------------------------------------------------------------------
+// Guest render function hooks (BK-specific addresses)
+//=============================================================================
+//
+// Hooked functions:
+//   __imp__VdSwap         - Present/swap, frame boundary (line 28182)
+//   __imp__VdInitializeRingBuffer  - Ring buffer setup (line 6840)
+//   __imp__VdEnableRingBufferRPtrWriteBack - Rptr writeback (line 6871)
+//   __imp__VdSetGraphicsInterruptCallback - Interrupt callback (line 9330)
+//   sub_824E04B0                   - Pre-swap ring buffer processing
+//   sub_824E5568                   - Writes command packets to ring buffer
+//   sub_824DF5F8                   - Draw submission
+//
+// Real addresses from ppc_recomp.116.cpp.
+//
+// These hooks call the original guest functions so the emulated xenos GPU
+// output renders normally. The hooks capture data for debugging/analysis
+// without interfering with the emulated output.
 
-// Install() at global scope - called from ReXApp::OnPreSetup()
-extern "C" void Install() {
+//------------------------------------------------------------------------------
+// __imp__VdSwap - Present/swap, frame boundary.
+//
+// Called once per guest frame. Calls the original VdSwap so the emulated
+// xenos GPU output renders normally. Does NOT call OnFrameEnd/RenderFrame
+// because the native renderer is incomplete and would replace the emulated
+// output with debug quads, causing black screens.
+
+extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
+  static thread_local bool g_in_hook = false;
+  if (g_in_hook) return;
+  g_in_hook = true;
+
+  static bool resolved = false;
+  static VdSwapFn g_real_vd_swap = nullptr;
+  if (!resolved) {
+    resolved = true;
+    g_real_vd_swap = reinterpret_cast<VdSwapFn>(
+        dlsym(RTLD_NEXT, "__imp__VdSwap"));
+  }
+
+  const bool enabled = rex::cvar::GetFlagByName("bk_native_render") == "true";
+
+  // Pace guest frame rate if enabled
+  if (enabled) {
+    PaceGuestFrame();
+  }
+
+  // Call original VdSwap so emulated GPU output renders normally
+  if (g_real_vd_swap) {
+    g_real_vd_swap(ctx, base);
+  } else {
+    REXLOG_WARN("bk native-render: __imp__VdSwap original not resolved");
+  }
+
+  g_in_hook = false;
+}
+
+//------------------------------------------------------------------------------
+// __imp__VdInitializeRingBuffer - GPU ring buffer initialization
+
+extern "C" void __imp__VdInitializeRingBuffer(PPCContext& ctx, uint8_t* base) {
+  static thread_local bool g_in_hook = false;
+  if (g_in_hook) return;
+  g_in_hook = true;
+
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true") {
+    REXLOG_INFO("bk native-render: VdInitializeRingBuffer called");
+  }
+
+  using Fn = void (*)(PPCContext&, uint8_t*);
+  static Fn real = nullptr;
+  static bool resolved = false;
+  if (!resolved) {
+    resolved = true;
+    real = reinterpret_cast<Fn>(
+        dlsym(RTLD_NEXT, "__imp__VdInitializeRingBuffer"));
+  }
+  if (real) real(ctx, base);
+
+  g_in_hook = false;
+}
+
+//------------------------------------------------------------------------------
+// __imp__VdEnableRingBufferRPtrWriteBack - Ring buffer read pointer writeback
+
+extern "C" void __imp__VdEnableRingBufferRPtrWriteBack(PPCContext& ctx,
+                                                        uint8_t* base) {
+  static thread_local bool g_in_hook = false;
+  if (g_in_hook) return;
+  g_in_hook = true;
+
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true") {
+    REXLOG_INFO("bk native-render: VdEnableRingBufferRPtrWriteBack called");
+  }
+
+  using Fn = void (*)(PPCContext&, uint8_t*);
+  static Fn real = nullptr;
+  static bool resolved = false;
+  if (!resolved) {
+    resolved = true;
+    real = reinterpret_cast<Fn>(
+        dlsym(RTLD_NEXT, "__imp__VdEnableRingBufferRPtrWriteBack"));
+  }
+  if (real) real(ctx, base);
+
+  g_in_hook = false;
+}
+
+//------------------------------------------------------------------------------
+// sub_824E04B0 - Pre-swap ring buffer processing
+
+extern "C" void sub_824E04B0(PPCContext& ctx, uint8_t* base) {
+  static thread_local bool g_in_hook = false;
+  if (g_in_hook) return;
+  g_in_hook = true;
+
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
+      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_current_frame.push_back({0, ctx.r3.u32, ctx.r4.u32, 0});
+  }
+
+  using Fn = void (*)(PPCContext&, uint8_t*);
+  static Fn real = nullptr;
+  static bool resolved = false;
+  if (!resolved) {
+    resolved = true;
+    real = reinterpret_cast<Fn>(
+        dlsym(RTLD_NEXT, "__imp__sub_824E04B0"));
+  }
+  if (real) real(ctx, base);
+
+  g_in_hook = false;
+}
+
+//------------------------------------------------------------------------------
+// sub_824E5568 - Main mesh submission (draw call)
+
+extern "C" void sub_824E5568(PPCContext& ctx, uint8_t* base) {
+  static thread_local bool g_in_hook = false;
+  if (g_in_hook) return;
+  g_in_hook = true;
+
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
+      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_current_frame.push_back({1, ctx.r3.u32, ctx.r4.u32, 0});
+  }
+
+  using Fn = void (*)(PPCContext&, uint8_t*);
+  static Fn real = nullptr;
+  static bool resolved = false;
+  if (!resolved) {
+    resolved = true;
+    real = reinterpret_cast<Fn>(
+        dlsym(RTLD_NEXT, "__imp__sub_824E5568"));
+  }
+  if (real) real(ctx, base);
+
+  g_in_hook = false;
+}
+
+//------------------------------------------------------------------------------
+// sub_824DF5F8 - Draw submission (lower level)
+
+extern "C" void sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
+  static thread_local bool g_in_hook = false;
+  if (g_in_hook) return;
+  g_in_hook = true;
+
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
+      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_current_frame.push_back({2, ctx.r3.u32, ctx.r4.u32, 0});
+  }
+
+  using Fn = void (*)(PPCContext&, uint8_t*);
+  static Fn real = nullptr;
+  static bool resolved = false;
+  if (!resolved) {
+    resolved = true;
+    real = reinterpret_cast<Fn>(
+        dlsym(RTLD_NEXT, "__imp__sub_824DF5F8"));
+  }
+  if (real) real(ctx, base);
+
+  g_in_hook = false;
+}
+
+//=============================================================================
+// Hook registration (called once at startup)
+//============================================================================
+
+void Install() {
   if (rex::cvar::GetFlagByName("bk_native_render") != "true") {
     return;
   }
-  REXLOG_INFO("bk native-render hook layer enabled");
-  REXLOG_INFO("bk native-render: hooked __imp__VdSwap (frame boundary)");
-  REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
-  REXLOG_INFO("bk native-render: hooked sub_824E5568 (mesh submission)");
-  REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
+  if (!g_announced.exchange(true)) {
+    REXLOG_INFO("bk native-render hook layer enabled");
+    REXLOG_INFO("bk native-render: hooked __imp__VdSwap (frame boundary)");
+    REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
+    REXLOG_INFO("bk native-render: hooked sub_824E5568 (mesh submission)");
+    REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
+  }
   if (rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     bk::native_gpu::Install();
   }
 }
+
+}  // namespace bk::native_render

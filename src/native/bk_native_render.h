@@ -24,7 +24,7 @@ void PaceGuestFrame();
 bool IsNativeRenderEnabled();
 bool IsNativeRenderSceneEnabled();
 
-}  // namespace bk::native_render
+// Install() at startup - called from ReXApp::OnPreSetup()
+void Install();
 
-// Install() at global scope - called from ReXApp::OnPreSetup()
-extern "C" void Install();
+}  // namespace bk::native_render

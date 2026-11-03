@@ -28,9 +28,6 @@ set(BEAUTIFULKATAMARI_SOURCES
     src/native/bk_native_render.cpp
     src/native/bk_native_scene.cpp
     src/native/bk_native_scene_gpu.cpp
-    src/native/bk_native_vulkan.cpp
-    src/native/bk_native_guest_read.cpp
-    src/native/bk_native_palette.cpp
     # Configuration dialog (ImGui, toggled with F1)
     src/native/bk_config_dialog.cpp
 )
