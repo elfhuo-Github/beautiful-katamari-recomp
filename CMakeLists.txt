@@ -8,6 +8,14 @@ project(beautiful_katamari LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Use the rexglue-sdk source tree submodule as the SDK source when REXSDK_DIR
+# is set to it. Otherwise, find_package() locates a prebuilt rexglue SDK install
+# (the default for this repo).
+#
+# To build from source:
+#   cmake -S . -B build -DREXSDK_DIR="${CMAKE_SOURCE_DIR}/third_party/rexglue-sdk"
+#   (also requires: git submodule update --init --recursive in third_party/rexglue-sdk)
+set(REXSDK_DIR "" CACHE PATH "Path to rexglue-sdk source tree (optional, uses prebuilt install if empty)")
 include(generated/rexglue.cmake)
 
 # Sources
