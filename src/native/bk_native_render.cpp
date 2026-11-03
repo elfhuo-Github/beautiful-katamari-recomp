@@ -324,6 +324,9 @@ void Install() {
     REXLOG_INFO("bk native-render: hooked __imp__VdSwap (frame boundary)");
     REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
   }
+  if (REXCVAR_GET(bk_native_render_scene)) {
+    bk::native_gpu::Install();
+  }
   // Per-function registration happens automatically via the REX_FUNC weak
   // alias mechanism: defining REX_FUNC(name) overrides __imp__name in the
   // function table. No explicit registry call is needed here.
