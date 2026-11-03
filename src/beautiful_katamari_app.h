@@ -40,7 +40,7 @@ class BeautifulKatamariApp : public rex::ReXApp {
     // Install the native renderer hook layer (bk_native_render). Guest
     // function hooks are registered here; capture is gated behind the
     // bk_native_render / bk_native_render_scene cvars.
-    bk::native_render::Install();
+    Install();
   }
 
   // Do NOT create the achievement toast dialog.

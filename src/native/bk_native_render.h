@@ -14,11 +14,17 @@
 
 namespace bk::native_render {
 
-void Install();
-
 // Precise guest frame pacing (guest render thread, swap boundary).
 // Caps the guest frame rate to `bk_guest_fps_cap` fps using absolute-schedule
 // pacing so sleep jitter never accumulates. No-op when cap < 1.
 void PaceGuestFrame();
 
+// Cvar accessors (defined in bk_native_render.cpp; avoids cross-TU
+// REXCVAR_DECLARE linkage issues).
+bool IsNativeRenderEnabled();
+bool IsNativeRenderSceneEnabled();
+
 }  // namespace bk::native_render
+
+// Install() at global scope - called from ReXApp::OnPreSetup()
+extern "C" void Install();
