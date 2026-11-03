@@ -1,0 +1,92 @@
+# ============================================================================
+# Beautiful Katamari Recomp - Runtime Configuration
+#=============================================================================
+# Edit this file to change default settings. Command-line arguments override
+# these values (e.g., --cvar bk_native_render=false).
+#
+# Cvars are read at startup from this file. Changes require a restart unless
+# marked as "hot-reload".
+#=============================================================================
+
+# ---------------------------------------------------------------
+# Native Renderer
+#---------------------------------------------------------------
+# Enable the native renderer hook layer (requires restart)
+bk_native_render = true
+
+# Render the game scene natively instead of emulated xenos GPU (hot-reload)
+bk_native_render_scene = true
+
+# Native scene debug visualization:
+#   0 = normal, 1 = clear only, 2 = solid color per item,
+#   3 = limit to 32 items, 4 = disable depth test
+bk_native_render_scene_debug = 0
+
+# Guest FPS cap (0 = uncapped)
+bk_guest_fps_cap = 0
+
+#--------------------------------------------------------------
+# Graphics / Presentation
+#---------------------------------------------------------------
+# Enable vertical sync
+vsync = true
+
+# Resolution scale multiplier
+resolution_scale = 1
+
+# Horizontal / vertical draw resolution scale
+draw_resolution_scale_x = 1
+draw_resolution_scale_y = 1
+
+# Enable native 2x MSAA
+native_2x_msaa = true
+
+# Render target path: "fbo" (host Vulkan render targets) or "fsi" (fragment shader interlock)
+render_target_path_vulkan = "fsi"
+
+# Readback resolve: "none", "full", "fast", or "some"
+readback_resolve = "full"
+
+# Memexport readback: true/false
+readback_memexport = true
+readback_memexport_fast = true
+
+# Occlusion queries: true/false
+occlusion_query_enable = false
+
+# Fake occlusion query sample count
+query_occlusion_fake_sample_count = 1000
+
+# Direct host resolve
+direct_host_resolve = true
+
+# Window / Display
+window_width = 1280
+window_height = 720
+fullscreen = false
+
+# Present effect: "bilinear", "cas", "fsr2", "fsr3"
+present_effect = "bilinear"
+present_dither = false
+present_letterbox = true
+
+# Safe area (pixels)
+present_safe_area_x = 90
+present_safe_area_y = 90
+
+#--------------------------------------------------------------
+# Audio
+#---------------------------------------------------------------
+# Keyboard/mouse -> Xbox 360 controller emulation (true/false)
+mnk_mode = false
+
+#--------------------------------------------------------------
+# Notes
+#---------------------------------------------------------------
+# To override any cvar on the command line:
+#   ./beautiful_katamari --game_data_root="..." --cvar bk_native_render=false
+#
+# Multiple cvars can be passed:
+#   ./beautiful_katamari --game_data_root="..." --cvar bk_native_render=false --cvar bk_guest_fps_cap=30
+ENDOFFILE
+echo "Config file created"

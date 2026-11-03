@@ -90,6 +90,16 @@ if(UNIX AND NOT APPLE)
     target_link_options(bk_config_tool PRIVATE -Wl,--export-dynamic)
 endif()
 
+# Copy config.toml to build directory so SDK reads it at startup
+if(UNIX AND NOT APPLE)
+    add_custom_command(TARGET beautiful_katamari POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/config.toml
+            $<TARGET_FILE_DIR:beautiful_katamari>
+        VERBATIM
+    )
+endif()
+
 # The SDK sets an $ORIGIN runpath but only stages librexruntime.so next to the
 # host on Windows/macOS. On Linux it must be copied beside the executable so
 # the $ORIGIN runpath resolves it.
@@ -101,7 +111,6 @@ if(UNIX AND NOT APPLE)
         VERBATIM
     )
 endif()
-
 
 # Link Vulkan for the native renderer.
 if(UNIX AND NOT APPLE)
