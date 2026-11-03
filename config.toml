@@ -9,6 +9,12 @@
 #=============================================================================
 
 # ---------------------------------------------------------------
+# Game
+#---------------------------------------------------------------
+# Path to Beautiful Katamari game data directory
+game_data_root = "/mnt/sdb/bkrecomp/Beautiful Katamari (USA) (En,Ja)"
+
+# ---------------------------------------------------------------
 # Native Renderer
 #---------------------------------------------------------------
 # Enable the native renderer hook layer (requires restart)
@@ -88,5 +94,3 @@ mnk_mode = false
 #
 # Multiple cvars can be passed:
 #   ./beautiful_katamari --game_data_root="..." --cvar bk_native_render=false --cvar bk_guest_fps_cap=30
-ENDOFFILE
-echo "Config file created"

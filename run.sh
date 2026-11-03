@@ -5,19 +5,27 @@
 # Usage: ./run.sh [options]
 #
 # Options:
-#   --native          Enable native renderer hook layer (default: enabled)
-#   --no-native       Use emulated xenos GPU instead (disable hooks)
+#   --native          Enable native renderer (default: enabled)
+#   --no-native       Use emulated xenos GPU instead
 #   --fps-cap=N       Cap frame rate (0 = uncapped)
-#   --debug=N         Debug visualization mode: 0-4 (default: 0)
+#   --debug=N         Debug visualization mode: 0-4
 #   --fullscreen      Fullscreen mode
-#   --windowed        Windowed mode (default)
+#   --windowed        Windowed mode
+#   --game-data-root=PATH   Path to game data (overrides config.toml)
 #   --help            Show this help
 #=============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/out/build/linux-amd64-release"
-GAME_DATA_ROOT="/mnt/sdb/bkrecomp/Beautiful Katamari (USA) (En,Ja)"
 EXECUTABLE="${BUILD_DIR}/beautiful_katamari"
+
+# Read config.toml for default game_data_root
+CONFIG_FILE="${BUILD_DIR}/config.toml"
+GAME_DATA_ROOT=""
+
+if [ -f "$CONFIG_FILE" ]; then
+    GAME_DATA_ROOT=$(grep -oP 'game_data_root\s*=\s*"[^"]*"' "$CONFIG_FILE" | head -1 | sed 's/game_data_root = //' | tr -d '"')
+fi
 
 NATIVE_RENDER=true
 NATIVE_RENDER_SCENE=true
@@ -54,6 +62,10 @@ while [[ $# -gt 0 ]]; do
             FULLSCREEN=false
             shift
             ;;
+        --game-data-root)
+            GAME_DATA_ROOT="$2"
+            shift 2
+            ;;
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
@@ -61,9 +73,10 @@ while [[ $# -gt 0 ]]; do
             echo "  --native          Enable native renderer hook layer (default)"
             echo "  --no-native       Use emulated xenos GPU instead"
             echo "  --fps-cap=N       Cap frame rate (0 = uncapped)"
-            echo "  --debug=N         Debug visualization mode 0-4"
-            echo "  --fullscreen      Fullscreen mode (1920x1080)"
-            echo "  --windowed        Windowed mode (default: 1280x720)"
+            echo "  --debug=N         Debug visualization mode: 0-4"
+            echo "  --fullscreen      Fullscreen mode"
+            echo "  --windowed        Windowed mode"
+            echo "  --game-data-root=PATH   Path to game data (overrides config.toml)"
             echo "  --help            Show this help"
             exit 0
             ;;
