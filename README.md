@@ -149,13 +149,34 @@ BKReXGlue/
 - Game boots and runs: SDL/Vulkan, 1920×1080 swapchain, XEX loads, kernel initializes, GPU pipelines created
 - 124 graphics pipelines created at boot
 - Audio, video, and input workarounds applied
-- Native renderer hooks compiled in but **inactive by default** — Vulkan pipeline implementation pending
+- Native renderer enabled **by default** (`bk_native_render = true`, `bk_native_render_scene = true`)
+- Vulkan pipeline implementation pending (skeleton in place)
 
 ## Repository
 
-This project will be published at https://github.com/mchughalex/skate3recomp —
-the native renderer architecture is inspired by that project's approach but
-rewritten for Beautiful Katamari's specific guest render pipeline.
+This project is published separately from
+[skate3recomp](https://github.com/mchughalex/skate3recomp), which served as
+the architectural inspiration for the native renderer. The native renderer
+architecture (hook layer → scene builder → GPU renderer → presenter) follows
+skate3recomp's approach but is rewritten entirely for Beautiful Katamari's
+guest render pipeline — function addresses, vertex formats, constant bank
+layouts, and shaders are all BK-specific.
+
+## GitHub Setup
+
+To publish this repository:
+
+```sh
+# Create a new repository on GitHub (e.g. beautiful-katamari-recomp),
+# then add it as a remote:
+git remote add origin https://github.com/YOUR_USERNAME/beautiful-katamari-recomp.git
+git branch -M main
+git push -u origin main
+```
+
+## License
+
+BSD 3-Clause. See LICENSE in the rexglue-sdk project root.
 
 ## License
 
