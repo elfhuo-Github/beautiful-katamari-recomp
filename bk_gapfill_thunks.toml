@@ -1,0 +1,156 @@
+# Beautiful Katamari - GapFill-swallowed leaf thunks (auto-generated).
+#
+# GapFill (src/codegen/phase_gapfill.cpp) splits uncovered code regions
+# only on `blr` and on direct branches to already-known callables. A leaf
+# thunk that ends in an *indirect* terminator (`bctr`) is therefore not a
+# split point, so a run of consecutive thunks is registered as a single
+# gap-fill function spanning all of them. Only the first thunk gets code;
+# the later ones have no entry, so an indirect call to one hits the runtime
+# "Call to invalid or unregistered function" fatal.
+#
+# The addresses below are exactly the block starts the previous XenonRecomp
+# build emitted *immediately after a bctr* that rexglue did not register on
+# its own. Sizes were measured against the previous build's block layout
+# (next boundary - address). Regenerate with tools/find_thunks2.py.
+#
+# NOTE: this list only grows when the runtime surfaces another address; it
+# is a workaround for the GapFill blind spot, not a complete recovery.
+
+[functions]
+"0x82210810" = { size = 0x18 }
+"0x822108F8" = { size = 0x24 }
+"0x82210AA0" = { size = 0x14 }
+"0x82239CAC" = { size = 0x4 }
+"0x82275368" = { size = 0x4 }
+"0x8227BD08" = { size = 0x20 }
+"0x82309310" = { size = 0x4 }
+"0x82332528" = { size = 0x8 }
+"0x8233E950" = { size = 0x4 }
+"0x82367698" = { size = 0x4 }
+"0x823676C0" = { size = 0x4 }
+"0x82370098" = { size = 0x10 }
+"0x823700A8" = { size = 0x10 }
+"0x823700B8" = { size = 0x10 }
+"0x823700C8" = { size = 0x10 }
+"0x82372AE4" = { size = 0x4 }
+"0x8238C4B0" = { size = 0x4 }
+"0x823BBEA8" = { size = 0x10 }
+"0x823BBEB8" = { size = 0x10 }
+"0x823FEB98" = { size = 0x10 }
+"0x82401420" = { size = 0x28 }
+"0x8242B1CC" = { size = 0x4 }
+"0x8246E22C" = { size = 0x4 }
+"0x82470EB8" = { size = 0x4 }
+"0x82490300" = { size = 0x4 }
+"0x824A3DC8" = { size = 0x5C }
+"0x82534880" = { size = 0x24 }
+"0x825348C8" = { size = 0x1C }
+"0x8255461C" = { size = 0x4 }
+"0x82554EC8" = { size = 0x4 }
+"0x8255D9B0" = { size = 0x8 }
+"0x8255FC70" = { size = 0x8 }
+"0x8255FC90" = { size = 0x8 }
+"0x8255FE10" = { size = 0x20 }
+"0x8255FE30" = { size = 0x20 }
+"0x8255FE50" = { size = 0x20 }
+"0x8255FE70" = { size = 0x20 }
+"0x8255FE90" = { size = 0x20 }
+"0x8255FEB0" = { size = 0x20 }
+"0x8255FED0" = { size = 0x20 }
+"0x8255FEF0" = { size = 0x20 }
+"0x8255FF10" = { size = 0x20 }
+"0x8255FF30" = { size = 0x20 }
+"0x825617B0" = { size = 0x10 }
+"0x82561A70" = { size = 0x4 }
+"0x82561AA0" = { size = 0x4 }
+"0x82566FE8" = { size = 0x8 }
+"0x8264E2C0" = { size = 0x4 }
+"0x826501C0" = { size = 0xC }
+"0x82650308" = { size = 0x4 }
+"0x82650898" = { size = 0x28 }
+"0x8265429C" = { size = 0x4 }
+"0x82654DB8" = { size = 0x4 }
+"0x82654DE8" = { size = 0x4 }
+"0x82658AD4" = { size = 0x4 }
+"0x8265A30C" = { size = 0x4 }
+"0x8265A32C" = { size = 0x4 }
+"0x8266B8F8" = { size = 0x1C }
+"0x8266B914" = { size = 0x4 }
+"0x8266BA8C" = { size = 0x4 }
+"0x8266DF40" = { size = 0x8 }
+"0x82672C64" = { size = 0x4 }
+"0x82672C84" = { size = 0x4 }
+"0x8267327C" = { size = 0x4 }
+"0x82673748" = { size = 0x6C }
+"0x82673B58" = { size = 0x14 }
+"0x82674DB0" = { size = 0x84 }
+"0x82677460" = { size = 0x10 }
+"0x82677550" = { size = 0x10 }
+"0x82677560" = { size = 0x10 }
+"0x82677A6C" = { size = 0x4 }
+"0x82677A90" = { size = 0x4 }
+"0x82677CA0" = { size = 0x10 }
+"0x82681440" = { size = 0x4 }
+"0x82681474" = { size = 0x4 }
+"0x82686F68" = { size = 0x14 }
+"0x82689770" = { size = 0x2C }
+"0x82702138" = { size = 0x4 }
+"0x82702164" = { size = 0x4 }
+"0x8270218C" = { size = 0x4 }
+"0x827021B4" = { size = 0x4 }
+"0x827021DC" = { size = 0x4 }
+"0x82702268" = { size = 0x4 }
+"0x82702290" = { size = 0x4 }
+"0x827022BC" = { size = 0x4 }
+"0x827022E4" = { size = 0x4 }
+"0x8270230C" = { size = 0x4 }
+"0x82702334" = { size = 0x4 }
+"0x82702358" = { size = 0x4 }
+"0x82702380" = { size = 0x4 }
+"0x827023AC" = { size = 0x4 }
+"0x827023D4" = { size = 0x4 }
+"0x8270B108" = { size = 0x4 }
+"0x8270D8F8" = { size = 0xC }
+"0x8270F9F8" = { size = 0x1C }
+"0x827100E8" = { size = 0x28 }
+"0x82716370" = { size = 0x10 }
+"0x82716380" = { size = 0xC }
+"0x827163A0" = { size = 0xC }
+"0x82716420" = { size = 0x8 }
+"0x8271A678" = { size = 0x50 }
+"0x8271A6C8" = { size = 0x14 }
+"0x8271A7E0" = { size = 0x4 }
+"0x8272056C" = { size = 0x4 }
+"0x8276C9E0" = { size = 0x4 }
+"0x8276CE24" = { size = 0x4 }
+"0x8276D688" = { size = 0x4 }
+"0x8276DF20" = { size = 0x18 }
+"0x8277BB1C" = { size = 0x4 }
+"0x8277F648" = { size = 0x8 }
+"0x82836848" = { size = 0x10 }
+"0x82836B88" = { size = 0x28 }
+"0x82836BB0" = { size = 0x28 }
+"0x82836BD8" = { size = 0x28 }
+"0x82836C00" = { size = 0x28 }
+"0x82837028" = { size = 0x20 }
+"0x82837048" = { size = 0x4 }
+"0x82837060" = { size = 0x10 }
+"0x82837070" = { size = 0x10 }
+"0x82837080" = { size = 0x10 }
+"0x82837090" = { size = 0x10 }
+"0x828370A0" = { size = 0x10 }
+"0x828370B0" = { size = 0x10 }
+"0x828370C0" = { size = 0x10 }
+"0x828370D0" = { size = 0x10 }
+"0x828370E0" = { size = 0x10 }
+"0x8295DA28" = { size = 0x50 }
+"0x8295DA78" = { size = 0x18 }
+
+# --- appended by tools/whack.py from runtime fatals (size-less) ---
+# 128 explicit entries above + the ones below = 133 total. The recovery loop
+# converged here: iteration 6 (a full, fatal-free 150 s run) appended nothing.
+"0x826A24F0" = {}  # auto-discovered 21:00:26
+"0x8241F428" = {}  # auto-discovered 21:01:48
+"0x82539188" = {}  # auto-discovered 21:03:07
+"0x824681B0" = {}  # auto-discovered 21:04:09
+"0x82638748" = {}  # auto-discovered 21:05:22

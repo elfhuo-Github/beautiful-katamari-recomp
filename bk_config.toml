@@ -1,0 +1,107 @@
+# Beautiful Katamari - ReXGlue codegen configuration.
+#
+# Manual overrides layered on top of the automatic analysis. Referenced from
+# beautiful_katamari_manifest.toml via `includes = ["bk_config.toml"]`.
+#
+# Auto-recovered GapFill-swallowed thunks live in bk_gapfill_thunks.toml.
+includes = ["bk_gapfill_thunks.toml", "bk_jumptable_fix.toml"]
+
+# --- Function boundaries -----------------------------------------------------
+# The analyzer found three branch targets that it could not associate with any
+# function (they are reached only by tail branches / comma-operator stubs and are
+# never referenced by PDATA). Declaring them explicitly as function entries lets
+# the call graph resolve. Sizes were taken from the previous XenonRecomp build
+# (see BKRecomp/ppc/ppc_recomp.{80,121,143}.cpp): each entry ends exactly where
+# the following function begins.
+[functions]
+"0x82408488" = { size = 0x28 }  # thunk: table lookup -> tail call sub_824A3650
+"0x825387E8" = { size = 0x14 }  # refcount++ helper (addi/lwz/addi/stw/blr)
+"0x8266DEA0" = { size = 0x1C }  # virtual dispatch thunk (mr/mr/mr/lwz/lwz/mtctr/bctr)
+
+# --- Leaf thunks swallowed by GapFill's segmenter ---------------------------
+# GapFill (phase_gapfill.cpp) splits each uncovered code region only on `blr`
+# and known tail calls. Leaf thunks that end in an *indirect* terminator
+# (`bctr`/`bctrl`) are not treated as boundaries, so a run of consecutive
+# thunks is registered as a single function whose claimed extent covers the
+# later thunks while no code is generated for them. An indirect call to such a
+# thunk then hits the runtime "invalid or unregistered function" fatal. They are
+# not in .pdata and not RTTI-vtable slots, so nothing else discovers them.
+# Declaring them here is the workaround (sizes from the previous XenonRecomp
+# build). This list is grown as the runtime reports more of them.
+"0x826735E8" = { size = 0x1C }  # vtable dispatch thunk (lwz/mr/lwz/li/lwz/mtctr/bctr)
+
+# --- "adjustor" thunks that only a virtual-method table points at -----------
+# The image contains a dense table of MSVC multiple-inheritance adjustor
+# thunks, each exactly two instructions long:
+#     addi r3,r3,-16   ;  b <real function>
+# They are never the target of a `bl`, are not in .pdata and are not
+# discovered by the block-discovery phase, so the analyzer only registers the
+# ones that some other code branches to.  The remaining ones survive only as
+# pointers in the vtables at 0x8210B7E8 / 0x8210B950, and an indirect call
+# through the vtable then hits the runtime fatal
+# "Call to invalid or unregistered function at guest address 0x...".
+#
+# The ten entries below are the adjustor thunks referenced by those two
+# vtables that the analyzer did not register.  Every one of them is 8 bytes
+# and ends exactly where the next (already registered) function begins.
+# Found with tools/vtable_scan.py.
+"0x8253E9F8" = { size = 0x8 }  # addi r3,r3,-4  ; b 0x82540890
+"0x8253EA00" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x8253E398
+"0x8253EA28" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x825407A0
+"0x8253EA30" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x8253E148
+"0x8253EA40" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x8253E6C8
+"0x8253FAA0" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x8253EA70
+"0x82540C38" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x82540B28
+"0x82540C58" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x82540780
+"0x82540C60" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x82540950
+"0x82540C70" = { size = 0x8 }  # addi r3,r3,-16 ; b 0x825407E0
+
+# --- Functions with unresolved internal conditional branches -----------------
+# GapFill split these into separate functions, leaving a *conditional* branch
+# that crosses the artificial boundary. rexglue can only resolve a conditional
+# branch to a label inside the same function, so it emitted
+# REX_FATAL("Unresolved branch ...") at the branch site. Declaring the whole
+# span as one function absorbs the target as an internal label. Sizes from the
+# previous XenonRecomp build (next function entry - this entry).
+"0x82685520" = { size = 0xA8 }  # GapFill split at 0x82685528 inside this body
+"0x822AC5A8" = { size = 0x48 }  # branch 0x822AC5C0 -> loc_822AC5E8
+
+# --- Functions whose only references are pointers in static tables ----------
+# These are the *rest* of the functions pointed at by the image's function
+# pointer tables (vtables, callbacks) that the new analysis merged into a
+# neighbouring function or otherwise failed to register.  They are reachable
+# only indirectly, so nothing in the generated code calls them, but the guest
+# still loads their address from the table and calls through it.  The runtime
+# then aborts with "Call to invalid or unregistered function".
+#
+# Found by dumping the read-only image mapping at runtime, scanning the data
+# sections for runs of big-endian words that are all functions in the previous
+# XenonRecomp build's function map, and taking the entries that build has but
+# this one does not.  Sizes are (next old-build entry - address).
+#
+# The first one (0x82426988) is the save-file / title-screen path that made
+# "press A to start" freeze right before the save-device screen.
+"0x82307700" = { size = 0x28 }
+"0x82426988" = { size = 0x20 }  # vtable slot @ 0x820D9E44
+"0x82426AD8" = { size = 0x14 }
+"0x824CDB28" = { size = 0x500 }
+"0x824CF408" = { size = 0x24 }
+"0x82538E88" = { size = 0x10 }
+"0x825559C4" = { size = 0x4C }
+"0x82555CE0" = { size = 0x18 }
+"0x82555D78" = { size = 0x28 }
+"0x82555FD8" = { size = 0x1C }
+"0x82556280" = { size = 0x28 }
+"0x82556800" = { size = 0x18 }
+"0x82556DB4" = { size = 0x14 }
+"0x82556F50" = { size = 0x2C }
+"0x82557214" = { size = 0x20 }
+"0x82557574" = { size = 0x70 }
+"0x825722E4" = { size = 0x1C }
+"0x827E8E4C" = { size = 0x34 }
+"0x827F0660" = { size = 0x18 }
+"0x827F0B14" = { size = 0xC }
+"0x827F5718" = { size = 0x34 }
+"0x8288CA20" = { size = 0x78 }
+"0x828AB9C0" = { size = 0x38 }
+"0x8298C8B0" = { size = 0x10 }

@@ -1,0 +1,45 @@
+# Build directories
+out/
+build/
+*.o
+*.a
+*.so
+
+# Build artifacts
+*.ninja
+*.ninja_deps
+*.ninja_log
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Logs
+*.log
+logs/
+
+# Config files (user-specific)
+beautiful_katamari.toml
+
+# Large binary assets (screenshots, etc.)
+*.png
+*.jpg
+*.zip
+*.rar
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated codegen output (regenerated at build time)
+generated/
+
+# Temporary files
+tmp/

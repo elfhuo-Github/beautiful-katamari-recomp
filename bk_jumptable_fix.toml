@@ -1,0 +1,104 @@
+# Manual jump-table overrides.
+#
+# Semantics of a [[switch_tables]] entry (as emitted by rexglue):
+#   * `address`  = the guest address of the `bctr` that performs the indirect
+#                   branch.
+#   * `register` = the guest GPR whose value is used as the switch subject at
+#                   the branch.  rexglue emits `switch (ctx.<reg>.u32)`, and the
+#                   `labels` array is indexed by *that value*.
+#   * `labels`   = label[i] is the branch target taken when the subject
+#                   register equals i.  A 0 entry means "null target" and is
+#                   emitted as a trap.
+#
+# For a standard Xbox-360 switch table the subject register holds the *table
+# index*, so `labels` is simply the jump table read out of the guest image.
+#
+# For the two tables below the guest scales the index **in place**
+# (`rlwinm r10,r10,2,0,29` -> `lwzx r11,r10,r11`), so at the `bctr` the
+# subject register holds the *byte offset* (index * 4) and not the index.
+# Therefore the labels array below is indexed by byte offset: the real table
+# entries live at positions 0, 4, 8, ... and the in-between positions are
+# unreachable filler (0).
+
+# --- sub_8222E438: bctr at 0x8222E454 ----------------------------------------
+#   lis r11,0x82A2 ; addi r11,r11,-26968  -> table base 0x82A196A8
+#   lwz r10,0x95E0(r10)                   -> index word  at 0x82B095E0
+#   rlwinm r10,r10,2,0,29 ; lwzx r11,r10,r11 ; mtctr r11 ; bctr
+#
+# Guest table at 0x82A196A8 (5 code entries; the following word is a pointer
+# to the "bad allocation" string and then float data, i.e. the table ends):
+#   [0] 0x8222E460  [1] 0x8222E530  [2] 0x8222E578  [3] 0x8222E530
+#   [4] 0x82997420
+#
+# The previous override only declared entries [0]..[3]; the game does use
+# index 4 (target 0x82997420), which fell through to `default:` and hit
+# `__builtin_trap()` ("Switch case out of range") -> the main XThread spins
+# and the game freezes a few seconds after the first frames.
+[[switch_tables]]
+address = 0x8222E454
+register = 10
+labels = [
+    0x8222E460,
+    0,
+    0,
+    0,
+    0x8222E530,
+    0,
+    0,
+    0,
+    0x8222E578,
+    0,
+    0,
+    0,
+    0x8222E530,
+    0,
+    0,
+    0,
+    0x82997420,
+]
+
+# --- sub_822DF3B0: bctr at 0x822DF3C4 ----------------------------------------
+#   lis r11,0x82A4 ; addi r11,r11,-18360  -> table base 0x82A3B848
+#   rlwinm r10,r3,2,27,29 ; lwzx r11,r10,r11 ; mtctr r11 ; bctr
+#
+# Guest table at 0x82A3B848 (8 code entries; the following word is again a
+# "bad allocation" string pointer, so the table ends there):
+#   [0] 0x822DF470  [1] 0x822DF640  [2] 0x822DF720  [3] 0x822DFB88
+#   [4] 0x822DFFF8  [5] 0x822E04A8  [6] 0x822E07E0  [7] 0x822E0A60
+#
+# The previous override only declared entry [0]; entries [1]..[7] were
+# missing and would trap the same way.
+[[switch_tables]]
+address = 0x822DF3C4
+register = 10
+labels = [
+    0x822DF470,
+    0,
+    0,
+    0,
+    0x822DF640,
+    0,
+    0,
+    0,
+    0x822DF720,
+    0,
+    0,
+    0,
+    0x822DFB88,
+    0,
+    0,
+    0,
+    0x822DFFF8,
+    0,
+    0,
+    0,
+    0x822E04A8,
+    0,
+    0,
+    0,
+    0x822E07E0,
+    0,
+    0,
+    0,
+    0x822E0A60,
+]
