@@ -72,6 +72,26 @@ target_include_directories(beautiful_katamari PRIVATE
     src/shaders
 )
 
+# Standalone configuration tool (runs before the game, toggles cvars,
+# saves to toml, and can launch the game).
+add_executable(bk_config_tool
+    src/config_tool/main.cpp
+    src/config_tool/config_tool.cpp
+)
+
+target_include_directories(bk_config_tool PRIVATE
+    src/config_tool
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    -isystem /mnt/sdb/bkrecomp/sdk/linux-amd64/include
+)
+
+target_link_libraries(bk_config_tool PRIVATE rex::runtime)
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(bk_config_tool PRIVATE GL)
+    target_link_options(bk_config_tool PRIVATE -Wl,--export-dynamic)
+endif()
+
 # The SDK sets an $ORIGIN runpath but only stages librexruntime.so next to the
 # host on Windows/macOS. On Linux it must be copied beside the executable so
 # the $ORIGIN runpath resolves it.
