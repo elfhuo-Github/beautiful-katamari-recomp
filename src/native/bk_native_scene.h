@@ -3,7 +3,7 @@
 // Data-driven scene renderer: consumes the per-frame MeshContext / draw
 // stream collected by bk_native_render.cpp, walks the verified guest
 // structures into a compact NativeFrameScene, and renders it with our own
-// shaders, replacing the emulated GPU output when active.
+// shaders, replacing the emulated xenos GPU output when active.
 //
 // Unlike skate3recomp (which targets Skate 3's specific renderengine
 // structures), this is written for Beautiful Katamari's own guest render
@@ -55,6 +55,11 @@ struct DrawItem {
   std::vector<DrawEntry> draws;
   uint64_t fingerprint = 0;
   bool pending = false;
+
+  // Guest-side vertex/index buffer pointers (resolved at capture time).
+  // The renderer reads these from guest memory and uploads to Vulkan.
+  const uint8_t* vb_data = nullptr;
+  const uint8_t* ib_data = nullptr;
 };
 
 // One frame of scene data built on the guest render thread.
