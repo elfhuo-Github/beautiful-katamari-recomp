@@ -49,7 +49,7 @@ rexglue_setup_target(beautiful_katamari GPU_PLUGINS xenos)
 # symbol in its dynamic symbol table, which is what --export-dynamic does; the
 # real implementation is still reached via dlsym(RTLD_NEXT).
 if(UNIX AND NOT APPLE)
-    target_link_options(beautiful_katamari PRIVATE -Wl,--export-dynamic)
+    target_link_options(beautiful_katamari PRIVATE -Wl,--export-dynamic -Wl,-Bsymbolic-functions)
 endif()
 
 # Perf tuning for the recompiled guest code (host side).

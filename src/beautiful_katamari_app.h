@@ -17,6 +17,7 @@
 
 #include "native/bk_config_dialog.h"
 #include "native/bk_native_render.h"
+#include "native/bk_native_scene_gpu.h"
 #include "window_title.h"
 
 class BeautifulKatamariApp : public rex::ReXApp {
@@ -85,10 +86,10 @@ class BeautifulKatamariApp : public rex::ReXApp {
   void OnPostSetup() override {
     // Connect the native renderer to the SDL window for Vulkan surface
     if (window()) {
-      void* native = window()->GetNativeWindowHandle();
-      if (native) {
-        bk::native_render::SetWindow(static_cast<SDL_Window*>(native));
-      }
+      fprintf(stderr, "=== OnPostSetup: calling bk::native_gpu::SetWindow ===\n");
+      bk::native_gpu::SetWindow();
+    } else {
+      fprintf(stderr, "=== OnPostSetup: window() returned null ===\n");
     }
 
     static constexpr const char* kNames[] = {

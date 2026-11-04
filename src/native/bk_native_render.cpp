@@ -77,11 +77,8 @@ static SubFunc g_real_sub_824e5568 = nullptr;
 static SubFunc g_real_sub_824df5f8 = nullptr;
 
 static thread_local bool g_in_hook = false;
-static SDL_Window* g_window = nullptr;
 
 bool Enabled() { return rex::cvar::GetFlagByName("bk_native_render") == "true"; }
-
-void SetWindow(SDL_Window* window) { g_window = window; }
 
 }  // namespace
 
@@ -113,8 +110,6 @@ void PaceGuestFrame() {
 bool IsNativeRenderEnabled() { return rex::cvar::GetFlagByName("bk_native_render") == "true"; }
 
 bool IsNativeRenderSceneEnabled() { return rex::cvar::GetFlagByName("bk_native_render_scene") == "true"; }
-
-void SetWindow(SDL_Window* window) { g_window = window; }
 
 //------------------------------------------------------------------------------
 // Guest render function hooks (BK-specific addresses)
@@ -161,10 +156,12 @@ extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
-  static bool swap_logged = false;
-  if (!swap_logged) {
-    swap_logged = true;
-    REXLOG_INFO("bk native-render: __imp__VdSwap hook active (frame=%llu)", g_frame_index);
+  // Direct stderr output to bypass logging system
+  static int swap_call_count = 0;
+  swap_call_count++;
+  if (swap_call_count <= 10) {
+    fprintf(stderr, "=== bk native-render: __imp__VdSwap hook called #%d (frame=%llu) ===\n",
+            swap_call_count, (unsigned long long)g_frame_index);
   }
 
   static bool resolved = false;
@@ -258,6 +255,13 @@ extern "C" void sub_824E04B0(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
+  static int e04b0_call_count = 0;
+  e04b0_call_count++;
+  if (e04b0_call_count <= 10) {
+    fprintf(stderr, "=== bk native-render: sub_824E04B0 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
+            e04b0_call_count, ctx.r3.u32, ctx.r4.u32);
+  }
+
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -285,6 +289,13 @@ extern "C" void sub_824E5568(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
+  static int e5568_call_count = 0;
+  e5568_call_count++;
+  if (e5568_call_count <= 10) {
+    fprintf(stderr, "=== bk native-render: sub_824E5568 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
+            e5568_call_count, ctx.r3.u32, ctx.r4.u32);
+  }
+
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -311,6 +322,13 @@ extern "C" void sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
+
+  static int df5f8_call_count = 0;
+  df5f8_call_count++;
+  if (df5f8_call_count <= 10) {
+    fprintf(stderr, "=== bk native-render: sub_824DF5F8 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
+            df5f8_call_count, ctx.r3.u32, ctx.r4.u32);
+  }
 
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
@@ -353,7 +371,7 @@ void Install() {
     REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
   }
   if (native_scene) {
-    // bk::native_gpu::Install();  // deferred pending guest crash investigation
+    bk::native_gpu::Install();
   }
 }
 

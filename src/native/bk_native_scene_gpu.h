@@ -10,8 +10,6 @@
 
 #include <cstdint>
 
-struct SDL_Window;
-
 namespace bk::native_gpu {
 
 // Initialize the native GPU renderer (Vulkan instance, device, queues).
@@ -19,8 +17,8 @@ namespace bk::native_gpu {
 void Install();
 
 // Set the SDL window handle for Vulkan surface/swapchain creation.
-// Called lazily on first RenderFrame if not set earlier.
-void SetWindow(SDL_Window* window);
+// Finds the SDL window internally since GetNativeWindowHandle may return null.
+void SetWindow();
 
 // Render one frame: read the current NativeFrameScene, upload vertex/index
 // data and constants, draw all items, and present through the Vulkan swapchain.

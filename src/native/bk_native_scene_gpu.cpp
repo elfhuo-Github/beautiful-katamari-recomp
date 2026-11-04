@@ -13,7 +13,10 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include <vector>
+#include <atomic>
+#include <chrono>
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
@@ -66,6 +69,11 @@ struct Gpu {
   VkDeviceMemory stage_vbmem = VK_NULL_HANDLE;
   VkBuffer stage_ib = VK_NULL_HANDLE;
   VkDeviceMemory stage_ibmem = VK_NULL_HANDLE;
+
+  // Independent render thread (bypasses guest hook interposition issues)
+  std::thread render_thread;
+  std::atomic<bool> render_thread_running{false};
+  std::atomic<bool> render_thread_should_stop{false};
 };
 
 Gpu g;
@@ -118,20 +126,31 @@ bool init_instance_and_surface() {
   ici.enabledExtensionCount = ext_count;
   ici.ppEnabledExtensionNames = exts;
 
-  if (vkCreateInstance(&ici, nullptr, &g.instance) != VK_SUCCESS) return false;
-
-  if (!SDL_Vulkan_CreateSurface(g.window, g.instance, nullptr, &g.surface)) {
-    REXLOG_WARN("bk native-render: SDL_Vulkan_CreateSurface failed");
+  VkResult vr = vkCreateInstance(&ici, nullptr, &g.instance);
+  if (vr != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateInstance failed: %d ===\n", vr);
     return false;
   }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateInstance succeeded ===\n");
+
+  if (!SDL_Vulkan_CreateSurface(g.window, g.instance, nullptr, &g.surface)) {
+    fprintf(stderr, "=== bk native GPU renderer: SDL_Vulkan_CreateSurface failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: SDL_Vulkan_CreateSurface succeeded ===\n");
 
   VkPhysicalDevice phys_list[16];
   uint32_t phys_count = 16;
   vkEnumeratePhysicalDevices(g.instance, &phys_count, phys_list);
+  fprintf(stderr, "=== bk native GPU renderer: phys_count=%u ===\n", phys_count);
   if (phys_count == 0) return false;
   g.phys = phys_list[0];
 
-  if (!pick_queue_family(g.phys, &g.qfam)) return false;
+  if (!pick_queue_family(g.phys, &g.qfam)) {
+    fprintf(stderr, "=== bk native GPU renderer: pick_queue_family failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: pick_queue_family succeeded, qfam=%u ===\n", g.qfam);
 
   float p = 1.0f;
   VkDeviceQueueCreateInfo dqci = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -146,12 +165,21 @@ bool init_instance_and_surface() {
   dci.enabledExtensionCount = 1;
   dci.ppEnabledExtensionNames = dev_exts;
 
-  if (vkCreateDevice(g.phys, &dci, nullptr, &g.device) != VK_SUCCESS) return false;
+  VkResult vr2 = vkCreateDevice(g.phys, &dci, nullptr, &g.device);
+  if (vr2 != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateDevice failed: %d ===\n", vr2);
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateDevice succeeded ===\n");
   vkGetDeviceQueue(g.device, g.qfam, 0, &g.queue);
 
   VkCommandPoolCreateInfo pci = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
   pci.queueFamilyIndex = g.qfam;
-  if (vkCreateCommandPool(g.device, &pci, nullptr, &g.pool) != VK_SUCCESS) return false;
+  if (vkCreateCommandPool(g.device, &pci, nullptr, &g.pool) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateCommandPool failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateCommandPool succeeded ===\n");
 
   // Descriptor set layout
   VkDescriptorSetLayoutBinding binding = {};
@@ -162,23 +190,34 @@ bool init_instance_and_surface() {
   VkDescriptorSetLayoutCreateInfo dslci = {};
   dslci.bindingCount = 1;
   dslci.pBindings = &binding;
-  if (vkCreateDescriptorSetLayout(g.device, &dslci, nullptr, &g.dsl) != VK_SUCCESS)
+  if (vkCreateDescriptorSetLayout(g.device, &dslci, nullptr, &g.dsl) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateDescriptorSetLayout failed ===\n");
     return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateDescriptorSetLayout succeeded ===\n");
 
   VkPipelineLayoutCreateInfo plci = {};
   plci.setLayoutCount = 1;
   plci.pSetLayouts = &g.dsl;
-  if (vkCreatePipelineLayout(g.device, &plci, nullptr, &g.layout) != VK_SUCCESS)
+  if (vkCreatePipelineLayout(g.device, &plci, nullptr, &g.layout) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreatePipelineLayout failed ===\n");
     return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreatePipelineLayout succeeded ===\n");
 
   // Shader modules
   VkShaderModule vsm, fsm;
-  if (create_shader_module(g.device, vert_spv, vert_spv_size, &vsm) != VK_SUCCESS)
-    return false;
-  if (create_shader_module(g.device, frag_spv, frag_spv_size, &fsm) != VK_SUCCESS) {
-    vkDestroyShaderModule(g.device, vsm, nullptr);
+  if (create_shader_module(g.device, vert_spv, vert_spv_size, &vsm) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: create_shader_module(vert) failed ===\n");
     return false;
   }
+  fprintf(stderr, "=== bk native GPU renderer: create_shader_module(vert) succeeded ===\n");
+  if (create_shader_module(g.device, frag_spv, frag_spv_size, &fsm) != VK_SUCCESS) {
+    vkDestroyShaderModule(g.device, vsm, nullptr);
+    fprintf(stderr, "=== bk native GPU renderer: create_shader_module(frag) failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: create_shader_module(frag) succeeded ===\n");
 
   VkPipelineShaderStageCreateInfo stages[2] = {};
   stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -211,8 +250,10 @@ bool init_instance_and_surface() {
   ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
   VkPipelineViewportStateCreateInfo vp = {};
-  vp.viewportCount = 1;
-  vp.scissorCount = 1;
+  vp.viewportCount = 0;
+  vp.scissorCount = 0;
+  vp.pViewports = nullptr;
+  vp.pScissors = nullptr;
 
   VkPipelineRasterizationStateCreateInfo rs = {};
   rs.polygonMode = VK_POLYGON_MODE_FILL;
@@ -256,10 +297,18 @@ bool init_instance_and_surface() {
   rpci.subpassCount = 1;
   rpci.pSubpasses = &spd;
   if (vkCreateRenderPass(g.device, &rpci, nullptr, &g.render_pass) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateRenderPass failed ===\n");
     vkDestroyShaderModule(g.device, vsm, nullptr);
     vkDestroyShaderModule(g.device, fsm, nullptr);
     return false;
   }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateRenderPass succeeded ===\n");
+
+  VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+  VkPipelineDynamicStateCreateInfo dynamicState = {};
+  dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+  dynamicState.dynamicStateCount = 2;
+  dynamicState.pDynamicStates = dynamicStates;
 
   VkGraphicsPipelineCreateInfo gpci = {};
   gpci.stageCount = 2;
@@ -270,19 +319,18 @@ bool init_instance_and_surface() {
   gpci.pRasterizationState = &rs;
   gpci.pMultisampleState = &ms;
   gpci.pColorBlendState = &cb;
+  gpci.pDynamicState = &dynamicState;
   gpci.layout = g.layout;
   gpci.renderPass = g.render_pass;
   gpci.subpass = 0;
 
-  if (vkCreateGraphicsPipelines(g.device, VK_NULL_HANDLE, 1, &gpci, nullptr,
-                                &g.pipeline) != VK_SUCCESS) {
-    vkDestroyShaderModule(g.device, vsm, nullptr);
-    vkDestroyShaderModule(g.device, fsm, nullptr);
-    return false;
-  }
-
+  // Skip graphics pipeline for now - just do clear + present
   vkDestroyShaderModule(g.device, vsm, nullptr);
   vkDestroyShaderModule(g.device, fsm, nullptr);
+  g.pipeline = VK_NULL_HANDLE;
+  g.layout = VK_NULL_HANDLE;
+  g.dsl = VK_NULL_HANDLE;
+  fprintf(stderr, "=== bk native GPU renderer: skipping graphics pipeline (clear-only mode) ===\n");
 
   // Vertex/index buffers
   VkBufferCreateInfo bci = {};
@@ -292,9 +340,14 @@ bool init_instance_and_surface() {
   vkGetPhysicalDeviceMemoryProperties(g.phys, &mp);
   uint32_t mt = 0;
 
+  fprintf(stderr, "=== bk native GPU renderer: about to create vertex buffer ===\n");
   bci.size = 1 << 20;
   bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-  if (vkCreateBuffer(g.device, &bci, nullptr, &g.vb) != VK_SUCCESS) return false;
+  if (vkCreateBuffer(g.device, &bci, nullptr, &g.vb) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateBuffer(vb) failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateBuffer(vb) succeeded ===\n");
   vkGetBufferMemoryRequirements(g.device, g.vb, &mr);
   mai.allocationSize = mr.size;
   mt = 0;
@@ -307,8 +360,16 @@ bool init_instance_and_surface() {
     }
   }
   mai.memoryTypeIndex = mt;
-  if (vkAllocateMemory(g.device, &mai, nullptr, &g.vbmem) != VK_SUCCESS) return false;
-  if (vkBindBufferMemory(g.device, g.vb, g.vbmem, 0) != VK_SUCCESS) return false;
+  if (vkAllocateMemory(g.device, &mai, nullptr, &g.vbmem) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkAllocateMemory(vbmem) failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkAllocateMemory(vbmem) succeeded ===\n");
+  if (vkBindBufferMemory(g.device, g.vb, g.vbmem, 0) != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkBindBufferMemory(vb) failed ===\n");
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkBindBufferMemory(vb) succeeded ===\n");
 
   bci.size = 1 << 20;
   bci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
@@ -602,198 +663,177 @@ void shutdown_vulkan() {
   vkDestroyDevice(g.device, nullptr);
   if (g.surface) vkDestroySurfaceKHR(g.instance, g.surface, nullptr);
   vkDestroyInstance(g.instance, nullptr);
-  g = Gpu();
+  // Reset fields manually (can't use g = Gpu() because std::thread is not copyable)
+  g.instance = VK_NULL_HANDLE;
+  g.phys = VK_NULL_HANDLE;
+  g.device = VK_NULL_HANDLE;
+  g.queue = VK_NULL_HANDLE;
+  g.pool = VK_NULL_HANDLE;
+  g.layout = VK_NULL_HANDLE;
+  g.pipeline = VK_NULL_HANDLE;
+  g.dsl = VK_NULL_HANDLE;
+  g.dpool = VK_NULL_HANDLE;
+  g.render_pass = VK_NULL_HANDLE;
+  g.surface = VK_NULL_HANDLE;
+  g.swapchain = VK_NULL_HANDLE;
+  g.swapchain_images.clear();
+  g.swapchain_views.clear();
+  g.swapchain_fbs.clear();
+  g.qfam = 0;
+  g.width = 1280;
+  g.height = 720;
+  g.current_frame = 0;
+  g.swapchain_image_count = 0;
+  g.initialized = false;
+  g.failed = false;
+  g.surface_ready = false;
+  g.frame_index = 0;
 }
 
 }  // namespace
 
-void Install() {
-  if (g.initialized || g.failed) return;
-  REXLOG_INFO("bk native GPU renderer: Install() called");
+void SetWindow() {
+  // Find the SDL window directly (GetNativeWindowHandle may return null)
+  int window_count = 0;
+  SDL_Window** sdl_windows = SDL_GetWindows(&window_count);
+  if (sdl_windows && window_count > 0) {
+    g.window = sdl_windows[0];
+    fprintf(stderr, "=== bk native GPU renderer: SetWindow found SDL_Window=%p ===\n", g.window);
+  } else {
+    fprintf(stderr, "=== bk native GPU renderer: SetWindow - no SDL windows found ===\n");
+  }
 }
 
-void SetWindow(SDL_Window* window) {
-  g.window = window;
+void render_thread_func() {
+  REXLOG_INFO("bk native GPU renderer: render thread started");
+
+  // Wait for window to be set
+  while (!g.render_thread_should_stop && !g.window) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  fprintf(stderr, "=== bk native GPU renderer: render thread detected window=%p ===\n", g.window);
+
+  if (g.render_thread_should_stop) {
+    g.render_thread_running = false;
+    return;
+  }
+
+  // Initialize Vulkan
+  fprintf(stderr, "=== bk native GPU renderer: render thread calling init_instance_and_surface ===\n");
+  if (!init_instance_and_surface()) {
+    g.failed = true;
+    REXLOG_WARN("bk native GPU renderer: instance/surface init failed");
+    g.render_thread_running = false;
+    return;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: render thread calling create_swapchain ===\n");
+  if (!create_swapchain()) {
+    g.failed = true;
+    REXLOG_WARN("bk native GPU renderer: swapchain init failed");
+    g.render_thread_running = false;
+    return;
+  }
+  g.initialized = true;
+  fprintf(stderr, "=== bk native GPU renderer: Vulkan initialized in render thread ===\n");
+  REXLOG_INFO("bk native GPU renderer: Vulkan initialized in render thread");
+
+  // Render loop at 60 FPS
+  const auto frame_time = std::chrono::milliseconds(16);
+  while (!g.render_thread_should_stop) {
+    auto start = std::chrono::steady_clock::now();
+
+    // Render one frame (calls the existing RenderFrame logic inline)
+    auto& scene = bk::native::CurrentScene();
+    if (!scene.items.empty()) {
+      if (!g.surface_ready) {
+        destroy_swapchain();
+        if (!create_swapchain()) {
+          g.failed = true;
+          break;
+        }
+      }
+
+      uint32_t fi = g.frame_index;
+      g.frame_index = (g.frame_index + 1) % Gpu::kFramesInFlight;
+
+      vkWaitForFences(g.device, 1, &g.fence[fi], VK_TRUE, UINT64_MAX);
+      vkResetFences(g.device, 1, &g.fence[fi]);
+
+      uint32_t image_index = 0;
+      vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX,
+                            g.sem_image_available[fi], VK_NULL_HANDLE,
+                            &image_index);
+
+      VkCommandBufferBeginInfo cbbi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+      cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      vkBeginCommandBuffer(g.cmd[fi], &cbbi);
+
+      void* ub_data;
+      vkMapMemory(g.device, g.umem[fi], 0, 256, 0, &ub_data);
+      memcpy(ub_data, scene.view_proj, 64);
+      vkUnmapMemory(g.device, g.umem[fi]);
+
+      VkRenderPassBeginInfo rpbi = {};
+      rpbi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+      rpbi.renderPass = g.render_pass;
+      rpbi.framebuffer = g.swapchain_fbs[image_index];
+      rpbi.renderArea = {{0, 0}, {g.width, g.height}};
+      VkClearValue clear = {{{0.1f, 0.1f, 0.15f, 1.0f}}};
+      rpbi.clearValueCount = 1;
+      rpbi.pClearValues = &clear;
+      vkCmdBeginRenderPass(g.cmd[fi], &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+      vkCmdEndRenderPass(g.cmd[fi]);
+      vkEndCommandBuffer(g.cmd[fi]);
+
+      VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+      VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      si.commandBufferCount = 1;
+      si.pCommandBuffers = &g.cmd[fi];
+      si.waitSemaphoreCount = 1;
+      si.pWaitSemaphores = &g.sem_image_available[fi];
+      si.pWaitDstStageMask = wait_stages;
+      si.signalSemaphoreCount = 1;
+      si.pSignalSemaphores = &g.sem_render_finished[fi];
+      vkQueueSubmit(g.queue, 1, &si, g.fence[fi]);
+
+      VkPresentInfoKHR pi = {};
+      pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+      pi.waitSemaphoreCount = 1;
+      pi.pWaitSemaphores = &g.sem_render_finished[fi];
+      pi.swapchainCount = 1;
+      pi.pSwapchains = &g.swapchain;
+      pi.pImageIndices = &image_index;
+      pi.pResults = nullptr;
+      vkQueuePresentKHR(g.queue, &pi);
+    }
+
+    auto end = std::chrono::steady_clock::now();
+    auto elapsed = end - start;
+    if (elapsed < frame_time) {
+      std::this_thread::sleep_for(frame_time - elapsed);
+    }
+  }
+
+  g.render_thread_running = false;
+  REXLOG_INFO("bk native GPU renderer: render thread stopped");
 }
+
+void Install() {
+  if (g.initialized || g.failed || g.render_thread_running) return;
+  REXLOG_INFO("bk native GPU renderer: Install() called");
+
+  g.render_thread_should_stop = false;
+  g.render_thread = std::thread(render_thread_func);
+  g.render_thread_running = true;
+}
+
+
 
 bool RenderFrame(uint8_t* guest_base) {
-  if (g.failed) return false;
-
-  REXLOG_INFO("bk native GPU renderer: RenderFrame called (window=%p, initialized=%d)",
-              static_cast<void*>(g.window), g.initialized);
-
-  // Lazy init on first call
-  if (!g.initialized) {
-    if (!g.window) {
-      g.failed = true;
-      REXLOG_WARN("bk native GPU renderer: no window set");
-      return false;
-    }
-    if (!init_instance_and_surface()) {
-      g.failed = true;
-      REXLOG_WARN("bk native GPU renderer: instance/surface init failed");
-      return false;
-    }
-    if (!create_swapchain()) {
-      g.failed = true;
-      REXLOG_WARN("bk native GPU renderer: swapchain init failed");
-      return false;
-    }
-  }
-
-  auto& scene = bk::native::CurrentScene();
-  if (scene.items.empty()) return true;
-
-  // Recreate swapchain if needed (surface changed)
-  if (!g.surface_ready) {
-    destroy_swapchain();
-    if (!create_swapchain()) {
-      g.failed = true;
-      return false;
-    }
-  }
-
-  uint32_t fi = g.frame_index;
-  g.frame_index = (g.frame_index + 1) % Gpu::kFramesInFlight;
-
-  // Wait for this frame's fence to be free (triple buffering)
-  vkWaitForFences(g.device, 1, &g.fence[fi], VK_TRUE, UINT64_MAX);
-  vkResetFences(g.device, 1, &g.fence[fi]);
-
-  // Acquire next swapchain image
-  uint32_t image_index = 0;
-  vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX,
-                        g.sem_image_available[fi], VK_NULL_HANDLE,
-                        &image_index);
-
-  VkCommandBufferBeginInfo cbbi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-  cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  vkBeginCommandBuffer(g.cmd[fi], &cbbi);
-
-  // Upload uniform (view_proj) - coherent memory, direct memcpy
-  void* ub_data;
-  vkMapMemory(g.device, g.umem[fi], 0, 256, 0, &ub_data);
-  memcpy(ub_data, scene.view_proj, 64);
-  vkUnmapMemory(g.device, g.umem[fi]);
-
-  // Begin render pass
-  VkRenderPassBeginInfo rpbi = {};
-  rpbi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-  rpbi.renderPass = g.render_pass;
-  rpbi.framebuffer = g.swapchain_fbs[image_index];
-  rpbi.renderArea = {{0, 0}, {g.width, g.height}};
-  VkClearValue clear = {{{0.1f, 0.1f, 0.15f, 1.0f}}};
-  rpbi.clearValueCount = 1;
-  rpbi.pClearValues = &clear;
-  vkCmdBeginRenderPass(g.cmd[fi], &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-
-  // Bind pipeline
-  vkCmdBindPipeline(g.cmd[fi], VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline);
-  vkCmdBindDescriptorSets(g.cmd[fi], VK_PIPELINE_BIND_POINT_GRAPHICS, g.layout, 0, 1,
-                          &g.dset[fi], 0, nullptr);
-
-  // Dynamic viewport/scissor
-  VkViewport vp = {0.0f, 0.0f, (float)g.width, (float)g.height, 0.0f, 1.0f};
-  VkRect2D sc = {{0, 0}, {g.width, g.height}};
-  vkCmdSetViewport(g.cmd[fi], 0, 1, &vp);
-  vkCmdSetScissor(g.cmd[fi], 0, 1, &sc);
-
-  // Vertex buffer
-  VkDeviceSize vb_offset = 0;
-  vkCmdBindVertexBuffers(g.cmd[fi], 0, 1, &g.vb, &vb_offset);
-
-  // Draw items - upload vertex data to staging, then to device buffer
-  size_t total_vb = 0;
-  size_t total_ib = 0;
-  for (auto& item : scene.items) {
-    total_vb += item.vb_bytes;
-    total_ib += item.ib_count * 4;
-  }
-
-  // Single upload for all vertex data this frame
-  if (total_vb > 0) {
-    void* stage_data;
-    vkMapMemory(g.device, g.stage_vbmem, 0, total_vb, 0, &stage_data);
-    uint8_t* dst = static_cast<uint8_t*>(stage_data);
-    for (auto& item : scene.items) {
-      if (item.vb_data && item.vb_bytes > 0) {
-        memcpy(dst, item.vb_data, item.vb_bytes);
-        dst += item.vb_bytes;
-      }
-    }
-    vkUnmapMemory(g.device, g.stage_vbmem);
-  }
-
-  // Single upload for all index data this frame
-  if (total_ib > 0) {
-    void* stage_data;
-    vkMapMemory(g.device, g.stage_ibmem, 0, total_ib, 0, &stage_data);
-    uint8_t* dst = static_cast<uint8_t*>(stage_data);
-    for (auto& item : scene.items) {
-      size_t ib_bytes = item.ib_count * 4;
-      if (item.ib_data && ib_bytes > 0) {
-        memcpy(dst, item.ib_data, ib_bytes);
-        dst += ib_bytes;
-      }
-    }
-    vkUnmapMemory(g.device, g.stage_ibmem);
-  }
-
-  // Draw items
-  size_t vb_offset_accum = 0;
-  size_t ib_offset_accum = 0;
-  for (auto& item : scene.items) {
-    // Copy staged vertex data to device buffer via command buffer
-    if (item.vb_data && item.vb_bytes > 0) {
-      VkBufferCopy copy_region = {vb_offset_accum, vb_offset_accum, item.vb_bytes};
-      vkCmdCopyBuffer(g.cmd[fi], g.stage_vb, g.vb, 1, &copy_region);
-    }
-
-    vkCmdBindVertexBuffers(g.cmd[fi], 0, 1, &g.vb, &vb_offset_accum);
-
-    VkDeviceSize ib_offset = ib_offset_accum;
-    vkCmdBindIndexBuffer(g.cmd[fi], g.ib, ib_offset, VK_INDEX_TYPE_UINT32);
-
-    for (auto& draw : item.draws) {
-      vkCmdDrawIndexed(g.cmd[fi], draw.index_count, 1, draw.start_index,
-                       draw.base_vertex, 0);
-    }
-
-    vb_offset_accum += item.vb_bytes;
-    ib_offset_accum += item.ib_count * 4;
-  }
-
-  vkCmdEndRenderPass(g.cmd[fi]);
-  vkEndCommandBuffer(g.cmd[fi]);
-
-  // Submit with semaphores
-  VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-  VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
-  si.commandBufferCount = 1;
-  si.pCommandBuffers = &g.cmd[fi];
-  si.waitSemaphoreCount = 1;
-  si.pWaitSemaphores = &g.sem_image_available[fi];
-  si.pWaitDstStageMask = wait_stages;
-  si.signalSemaphoreCount = 1;
-  si.pSignalSemaphores = &g.sem_render_finished[fi];
-  vkQueueSubmit(g.queue, 1, &si, g.fence[fi]);
-
-  // Present with wait semaphore
-  VkPresentInfoKHR pi = {};
-  pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  pi.waitSemaphoreCount = 1;
-  pi.pWaitSemaphores = &g.sem_render_finished[fi];
-  pi.swapchainCount = 1;
-  pi.pSwapchains = &g.swapchain;
-  pi.pImageIndices = &image_index;
-  pi.pResults = nullptr;
-  vkQueuePresentKHR(g.queue, &pi);
-
+  (void)guest_base;
+  // RenderFrame is now driven by the render thread.
+  // This stub is kept for API compatibility.
   return true;
 }
-
-void Shutdown() {
-  shutdown_vulkan();
-}
-
 }  // namespace bk::native_gpu
