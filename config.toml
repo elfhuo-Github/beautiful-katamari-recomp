@@ -21,6 +21,8 @@ game_data_root = "/mnt/sdb/bkrecomp/Beautiful Katamari (USA) (En,Ja)"
 bk_native_render = true
 
 # Render the game scene natively instead of emulated xenos GPU (hot-reload)
+# Defaults to false because the native renderer is incomplete - the
+# emulated xenos GPU path renders normally when disabled.
 bk_native_render_scene = false
 
 # Native scene debug visualization:
@@ -44,18 +46,18 @@ resolution_scale = 1
 draw_resolution_scale_x = 1
 draw_resolution_scale_y = 1
 
-# Enable native 2x MSAA
-native_2x_msaa = true
+# Native 2x MSAA - disabled by default for performance
+native_2x_msaa = false
 
 # Render target path: "fbo" (host Vulkan render targets) or "fsi" (fragment shader interlock)
 render_target_path_vulkan = "fsi"
 
-# Readback resolve: "none", "full", "fast", or "some"
-readback_resolve = "full"
+# Readback resolve: "none" (fastest), "full" (expensive - reads entire frame buffer)
+readback_resolve = "none"
 
-# Memexport readback: true/false
-readback_memexport = true
-readback_memexport_fast = true
+# Memexport readback - disabled for performance
+readback_memexport = false
+readback_memexport_fast = false
 
 # Occlusion queries: true/false
 occlusion_query_enable = false
