@@ -35,10 +35,11 @@ REXCVAR_DEFINE_BOOL(
     "bk_native_render_scene is also enabled.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(
-    bk_native_render_scene, true, "Beautiful Katamari",
+    bk_native_render_scene, false, "Beautiful Katamari",
     "Render the game scene natively from the hooked draw stream, replacing "
     "the emulated xenos GPU output. Requires bk_native_render. Hot-toggles "
-    "live between the native and emulated renderers.")
+    "live between the native and emulated renderers. Defaults to false "
+    "because the native renderer is incomplete and would cause black screens.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(
     bk_native_render_scene_debug, 0, "Beautiful Katamari",
@@ -111,6 +112,19 @@ bool IsNativeRenderSceneEnabled() { return rex::cvar::GetFlagByName("bk_native_r
 //------------------------------------------------------------------------------
 // Guest render function hooks (BK-specific addresses)
 //=============================================================================
+//
+// DISABLED (0).  These definitions have external linkage and the exact names of
+// the guest import thunks, so they replace the generated ones at link time no
+// matter what the cvars say: the cvar only gates the hook body, not the
+// interposition itself.  The hooks then try to reach the original through
+// dlsym(RTLD_NEXT), which cannot see a symbol defined inside the executable, so
+// the original guest functions never run - the game boots to a black window and
+// loops on "Unhandled guest access violation: write of guest 0x00000284".
+//
+// They are kept for reference until the renderer moves into the SDK (the code
+// that can actually decode draws); nothing in the shipped build uses them.
+#define BK_NATIVE_GUEST_HOOKS 0
+#if BK_NATIVE_GUEST_HOOKS
 //
 // Hooked functions:
 //   __imp__VdSwap         - Present/swap, frame boundary (line 28182)
@@ -297,6 +311,8 @@ extern "C" void sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   g_in_hook = false;
 }
 
+#endif  // BK_NATIVE_GUEST_HOOKS
+
 //=============================================================================
 // Hook registration (called once at startup)
 //============================================================================
@@ -306,11 +322,7 @@ void Install() {
     return;
   }
   if (!g_announced.exchange(true)) {
-    REXLOG_INFO("bk native-render hook layer enabled");
-    REXLOG_INFO("bk native-render: hooked __imp__VdSwap (frame boundary)");
-    REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
-    REXLOG_INFO("bk native-render: hooked sub_824E5568 (mesh submission)");
-    REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
+    REXLOG_INFO("bk native-render: capture layer enabled (guest hooks disabled)");
   }
   if (rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     bk::native_gpu::Install();

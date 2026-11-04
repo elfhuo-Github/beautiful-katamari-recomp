@@ -21,7 +21,7 @@ game_data_root = "/mnt/sdb/bkrecomp/Beautiful Katamari (USA) (En,Ja)"
 bk_native_render = true
 
 # Render the game scene natively instead of emulated xenos GPU (hot-reload)
-bk_native_render_scene = true
+bk_native_render_scene = false
 
 # Native scene debug visualization:
 #   0 = normal, 1 = clear only, 2 = solid color per item,

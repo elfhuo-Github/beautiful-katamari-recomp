@@ -70,6 +70,19 @@ target_include_directories(beautiful_katamari PRIVATE
     src/shaders
 )
 
+# When building the SDK from source, the SDK's install() step is what normally
+# flattens its third-party headers into <prefix>/include (rex/ui/style.h pulls
+# in imgui.h, o1heap.h, ...).  A source-tree build has no install prefix, so add
+# those directories here to keep the host sources building unchanged.
+if(REXSDK_DIR)
+    target_include_directories(beautiful_katamari PRIVATE
+        "${REXSDK_DIR}/thirdparty/imgui"
+        "${REXSDK_DIR}/thirdparty/o1heap/o1heap"
+        "${REXSDK_DIR}/thirdparty/disruptorplus/include"
+        "${REXSDK_DIR}/thirdparty/renderdoc"
+    )
+endif()
+
 # Standalone configuration tool (runs before the game, toggles cvars,
 # saves to toml, and can launch the game).
 add_executable(bk_config_tool
