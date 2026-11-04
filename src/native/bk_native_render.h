@@ -35,6 +35,6 @@ void SetWindow(SDL_Window* window);
 
 // Called at the guest swap boundary: builds the native frame scene and
 // renders it natively when bk_native_render_scene is active.
-void OnFrameEnd(uint8_t* guest_base, uint64_t frame_index);
+// (Implementation in bk::native::OnFrameEnd, declared in bk_native_scene.h)
 
 }  // namespace bk::native_render

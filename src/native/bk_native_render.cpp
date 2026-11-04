@@ -130,7 +130,7 @@ void SetWindow(SDL_Window* window) { g_window = window; }
 //
 // They are kept for reference until the renderer moves into the SDK (the code
 // that can actually decode draws); nothing in the shipped build uses them.
-#define BK_NATIVE_GUEST_HOOKS 0
+#define BK_NATIVE_GUEST_HOOKS 1
 #if BK_NATIVE_GUEST_HOOKS
 //
 // Hooked functions:
@@ -161,6 +161,12 @@ extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
+  static bool swap_logged = false;
+  if (!swap_logged) {
+    swap_logged = true;
+    REXLOG_INFO("bk native-render: __imp__VdSwap hook active (frame=%llu)", g_frame_index);
+  }
+
   static bool resolved = false;
   static VdSwapFn g_real_vd_swap = nullptr;
   if (!resolved) {
@@ -178,8 +184,9 @@ extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
 
   // Build native frame scene and render natively when enabled
   if (rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    OnFrameEnd(base, g_frame_index++);
-    bk::native_gpu::RenderFrame(base);
+    bk::native::OnFrameEnd(base, g_frame_index++, g_current_frame);
+    g_current_frame.clear();
+    // bk::native_gpu::RenderFrame(base);  // deferred pending guest crash fix
   }
 
   // Call original VdSwap so emulated GPU output renders normally
@@ -331,14 +338,22 @@ extern "C" void sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
 //============================================================================
 
 void Install() {
-  if (rex::cvar::GetFlagByName("bk_native_render") != "true") {
+  bool native_render = rex::cvar::GetFlagByName("bk_native_render") == "true";
+  bool native_scene = rex::cvar::GetFlagByName("bk_native_render_scene") == "true";
+  REXLOG_INFO("bk native-render: Install() called (native_render=%d, native_scene=%d)",
+              native_render, native_scene);
+  if (!native_render) {
     return;
   }
   if (!g_announced.exchange(true)) {
-    REXLOG_INFO("bk native-render: capture layer enabled (guest hooks disabled)");
+    REXLOG_INFO("bk native-render hook layer enabled");
+    REXLOG_INFO("bk native-render: hooked __imp__VdSwap (frame boundary)");
+    REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
+    REXLOG_INFO("bk native-render: hooked sub_824E5568 (mesh submission)");
+    REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
   }
-  if (rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    bk::native_gpu::Install();
+  if (native_scene) {
+    // bk::native_gpu::Install();  // deferred pending guest crash investigation
   }
 }
 
