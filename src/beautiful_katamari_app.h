@@ -13,6 +13,8 @@
 #include <rex/rex_app.h>
 #include <rex/ui/virtual_key.h>
 
+#include <SDL3/SDL.h>
+
 #include "native/bk_config_dialog.h"
 #include "native/bk_native_render.h"
 #include "window_title.h"
@@ -81,6 +83,14 @@ class BeautifulKatamariApp : public rex::ReXApp {
   // readback, present mode), so record them once at startup instead of
   // guessing.  All values are the effective post-config-file values.
   void OnPostSetup() override {
+    // Connect the native renderer to the SDL window for Vulkan surface
+    if (window()) {
+      void* native = window()->GetNativeWindowHandle();
+      if (native) {
+        bk::native_render::SetWindow(static_cast<SDL_Window*>(native));
+      }
+    }
+
     static constexpr const char* kNames[] = {
         "vsync",
         "resolution_scale",

@@ -14,6 +14,8 @@
 
 #include "generated/default/beautiful_katamari_init.h"
 
+#include <SDL3/SDL.h>
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -75,8 +77,11 @@ static SubFunc g_real_sub_824e5568 = nullptr;
 static SubFunc g_real_sub_824df5f8 = nullptr;
 
 static thread_local bool g_in_hook = false;
+static SDL_Window* g_window = nullptr;
 
 bool Enabled() { return rex::cvar::GetFlagByName("bk_native_render") == "true"; }
+
+void SetWindow(SDL_Window* window) { g_window = window; }
 
 }  // namespace
 
@@ -108,6 +113,8 @@ void PaceGuestFrame() {
 bool IsNativeRenderEnabled() { return rex::cvar::GetFlagByName("bk_native_render") == "true"; }
 
 bool IsNativeRenderSceneEnabled() { return rex::cvar::GetFlagByName("bk_native_render_scene") == "true"; }
+
+void SetWindow(SDL_Window* window) { g_window = window; }
 
 //------------------------------------------------------------------------------
 // Guest render function hooks (BK-specific addresses)
@@ -167,6 +174,12 @@ extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
   // Pace guest frame rate if enabled
   if (enabled) {
     PaceGuestFrame();
+  }
+
+  // Build native frame scene and render natively when enabled
+  if (rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+    OnFrameEnd(base, g_frame_index++);
+    bk::native_gpu::RenderFrame(base);
   }
 
   // Call original VdSwap so emulated GPU output renders normally

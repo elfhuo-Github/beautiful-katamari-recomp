@@ -10,14 +10,20 @@
 
 #include <cstdint>
 
+struct SDL_Window;
+
 namespace bk::native_gpu {
 
-// Initialize the native GPU renderer (Vulkan device, pipelines, shader
-// modules). Called once at startup after the window/SDL is available.
+// Initialize the native GPU renderer (Vulkan instance, device, queues).
+// Called once at startup after the window/SDL is available.
 void Install();
 
+// Set the SDL window handle for Vulkan surface/swapchain creation.
+// Called lazily on first RenderFrame if not set earlier.
+void SetWindow(SDL_Window* window);
+
 // Render one frame: read the current NativeFrameScene, upload vertex/index
-// data and constants, draw all items, and present through the SDK presenter.
+// data and constants, draw all items, and present through the Vulkan swapchain.
 // Called once per guest frame at the swap boundary.
 // Returns false if the native path failed (caller falls back to emulated).
 bool RenderFrame(uint8_t* guest_base);
