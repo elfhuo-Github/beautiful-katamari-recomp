@@ -23,7 +23,7 @@ bk_native_render = true
 # Render the game scene natively instead of emulated xenos GPU (hot-reload)
 # Defaults to false because the native renderer is incomplete - the
 # emulated xenos GPU path renders normally when disabled.
-bk_native_render_scene = true
+bk_native_render_scene = false
 
 # Native scene debug visualization:
 #   0 = normal, 1 = clear only, 2 = solid color per item,

@@ -4,18 +4,20 @@
 // state for debugging/analysis. Does NOT replace the emulated GPU output -
 // the xenos GPU plugin renders normally. The hooks capture data for
 // analysis/debugging without interfering with the emulated output.
+//
+// NOTE: These hooks are disabled by default (BK_NATIVE_GUEST_HOOKS = 0)
+// because dlsym(RTLD_NEXT) cannot resolve the original guest functions when
+// they are defined in the same executable. When enabled, the hooks would
+// intercept __imp__VdSwap etc. but never call the originals, causing the
+// guest to spin forever (black screen, 100% CPU).
 
 #include "bk_native_render.h"
 #include "bk_native_scene.h"
 #include "bk_native_scene_gpu.h"
-
 #include "bk_native_guest_read.h"
 #include "bk_native_palette.h"
-
 #include "generated/default/beautiful_katamari_init.h"
-
 #include <SDL3/SDL.h>
-
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -24,328 +26,179 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
 namespace bk::native_render {
-
-REXCVAR_DEFINE_BOOL(
-    bk_native_render, true, "Beautiful Katamari",
-    "Enable the Beautiful Katamari native renderer hook layer. The guest "
-    "render hooks are installed at boot but capture/no-op until "
-    "bk_native_render_scene is also enabled.")
+REXCVAR_DEFINE_BOOL(bk_native_render, true, "Beautiful Katamari", "Enable the Beautiful Katamari native renderer hook layer.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-REXCVAR_DEFINE_BOOL(
-    bk_native_render_scene, false, "Beautiful Katamari",
-    "Render the game scene natively from the hooked draw stream, replacing "
-    "the emulated xenos GPU output. Requires bk_native_render. Hot-toggles "
-    "live between the native and emulated renderers. Defaults to false "
-    "because the native renderer is incomplete and would cause black screens.")
+REXCVAR_DEFINE_BOOL(bk_native_render_scene, false, "Beautiful Katamari", "Render the game scene natively from the hooked draw stream.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_INT32(
-    bk_native_render_scene_debug, 0, "Beautiful Katamari",
-    "Native scene debug: 0=normal, 1=clear only, 2=solid color per item, "
-    "3=limit to 32 items, 4=disable depth test.")
-    .range(0, 4)
-    .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_DOUBLE(
-    bk_guest_fps_cap, 0.0, "Beautiful Katamari",
-    "Pace the guest render loop to this frame rate (0 = uncapped). BK "
-    "produces frames at irregular intervals; capping a few fps below the "
-    "display refresh smooths VRR judder.")
-    .range(0.0, 1000.0)
-    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_INT32(bk_native_render_scene_debug, 0, "Beautiful Katamari", "Native scene debug: 0=normal, 1=clear only, 2=solid color per item, 3=limit to 32 items, 4=disable depth test.")
+    .range(0, 4).lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_DOUBLE(bk_guest_fps_cap, 60.0, "Beautiful Katamari", "Pace the guest render loop to this frame rate (0 = uncapped).")
+    .range(0.0, 1000.0).lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace {
-
 std::mutex g_mutex;
-std::vector<bk::native::SubmitRecord> g_current_frame;
+std::vector<bk::native::DrawItem> g_current_frame;
 uint64_t g_frame_index = 0;
 std::atomic<bool> g_announced{false};
-
 using VdSwapFn = void (*)(PPCContext&, uint8_t*);
 static VdSwapFn g_real_vd_swap = nullptr;
 static bool g_vd_swap_resolved = false;
-
-using RingBufferFn = void (*)(PPCContext&, uint8_t*);
-static RingBufferFn g_real_vd_init_ring = nullptr;
-
 using SubFunc = void (*)(PPCContext&, uint8_t*);
 static SubFunc g_real_sub_824e04b0 = nullptr;
 static SubFunc g_real_sub_824e5568 = nullptr;
 static SubFunc g_real_sub_824df5f8 = nullptr;
-
 static thread_local bool g_in_hook = false;
-
 bool Enabled() { return rex::cvar::GetFlagByName("bk_native_render") == "true"; }
-
 }  // namespace
 
 void PaceGuestFrame() {
   double cap = rex::cvar::Query<double>("bk_guest_fps_cap");
   if (cap < 1.0) return;
   static std::chrono::steady_clock::time_point s_next{};
-  const auto interval = std::chrono::duration_cast<
-      std::chrono::steady_clock::duration>(
-      std::chrono::duration<double>(1.0 / cap));
+  const auto interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / cap));
   const auto now = std::chrono::steady_clock::now();
-  if (s_next.time_since_epoch().count() == 0 ||
-      now > s_next + interval) {
-    s_next = now + interval;
-    return;
-  }
+  if (s_next.time_since_epoch().count() == 0 || now > s_next + interval) { s_next = now + interval; return; }
   while (true) {
     const auto remaining = s_next - std::chrono::steady_clock::now();
     if (remaining <= std::chrono::steady_clock::duration::zero()) break;
-    if (remaining > std::chrono::milliseconds(2)) {
-      std::this_thread::sleep_for(remaining - std::chrono::milliseconds(2));
-    } else if (remaining > std::chrono::microseconds(50)) {
-      std::this_thread::yield();
-    }
+    if (remaining > std::chrono::milliseconds(2)) std::this_thread::sleep_for(remaining - std::chrono::milliseconds(2));
+    else if (remaining > std::chrono::milliseconds(50)) std::this_thread::yield();
   }
   s_next += interval;
 }
 
 bool IsNativeRenderEnabled() { return rex::cvar::GetFlagByName("bk_native_render") == "true"; }
-
 bool IsNativeRenderSceneEnabled() { return rex::cvar::GetFlagByName("bk_native_render_scene") == "true"; }
 
+#define BK_NATIVE_GUEST_HOOKS 0
+
+#if BK_NATIVE_GUEST_HOOKS
 //------------------------------------------------------------------------------
 // Guest render function hooks (BK-specific addresses)
 //=============================================================================
 //
-// DISABLED (0).  These definitions have external linkage and the exact names of
-// the guest import thunks, so they replace the generated ones at link time no
-// matter what the cvars say: the cvar only gates the hook body, not the
-// interposition itself.  The hooks then try to reach the original through
-// dlsym(RTLD_NEXT), which cannot see a symbol defined inside the executable, so
-// the original guest functions never run - the game boots to a black window and
-// loops on "Unhandled guest access violation: write of guest 0x00000284".
-//
-// They are kept for reference until the renderer moves into the SDK (the code
-// that can actually decode draws); nothing in the shipped build uses them.
-#define BK_NATIVE_GUEST_HOOKS 1
-#if BK_NATIVE_GUEST_HOOKS
-//
 // Hooked functions:
-//   __imp__VdSwap         - Present/swap, frame boundary (line 28182)
-//   __imp__VdInitializeRingBuffer  - Ring buffer setup (line 6840)
-//   __imp__VdEnableRingBufferRPtrWriteBack - Rptr writeback (line 6871)
-//   __imp__VdSetGraphicsInterruptCallback - Interrupt callback (line 9330)
+//   __imp__VdSwap         - Present/swap, frame boundary
+//   __imp__VdInitializeRingBuffer  - Ring buffer setup
+//   __imp__VdEnableRingBufferRPtrWriteBack - Rptr writeback
 //   sub_824E04B0                   - Pre-swap ring buffer processing
 //   sub_824E5568                   - Writes command packets to ring buffer
 //   sub_824DF5F8                   - Draw submission
 //
-// Real addresses from ppc_recomp.116.cpp.
-//
 // These hooks call the original guest functions so the emulated xenos GPU
 // output renders normally. The hooks capture data for debugging/analysis
 // without interfering with the emulated output.
-
-//------------------------------------------------------------------------------
-// __imp__VdSwap - Present/swap, frame boundary.
-//
-// Called once per guest frame. Calls the original VdSwap so the emulated
-// xenos GPU output renders normally. Does NOT call OnFrameEnd/RenderFrame
-// because the native renderer is incomplete and would replace the emulated
-// output with debug quads, causing black screens.
 
 extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
 
-  // Direct stderr output to bypass logging system
   static int swap_call_count = 0;
   swap_call_count++;
-  if (swap_call_count <= 10) {
-    fprintf(stderr, "=== bk native-render: __imp__VdSwap hook called #%d (frame=%llu) ===\n",
-            swap_call_count, (unsigned long long)g_frame_index);
-  }
+  if (swap_call_count <= 10) fprintf(stderr, "=== bk native-render: __imp__VdSwap hook called #%d (frame=%llu) ===
+", swap_call_count, (unsigned long long)g_frame_index);
 
-  static bool resolved = false;
-  static VdSwapFn g_real_vd_swap = nullptr;
-  if (!resolved) {
-    resolved = true;
-    g_real_vd_swap = reinterpret_cast<VdSwapFn>(
-        dlsym(RTLD_NEXT, "__imp__VdSwap"));
+  if (!g_real_vd_swap) {
+    g_real_vd_swap = reinterpret_cast<VdSwapFn>(dlsym(RTLD_NEXT, "__imp__VdSwap"));
+    if (!g_real_vd_swap) {
+      REXLOG_ERROR("bk native-render: __imp__VdSwap original NOT resolved via dlsym!");
+    }
   }
 
   const bool enabled = rex::cvar::GetFlagByName("bk_native_render") == "true";
+  if (enabled) PaceGuestFrame();
 
-  // Pace guest frame rate if enabled
-  if (enabled) {
-    PaceGuestFrame();
-  }
+  // Draw hooks capture data into g_current_frame for debugging/analysis.
+  // The native renderer is incomplete - do NOT call OnFrameEnd/RenderFrame
+  // here, as that would replace the emulated xenos GPU output and cause
+  // a black screen. The emulated GPU path handles all rendering normally.
+  g_current_frame.clear();
 
-  // Build native frame scene and render natively when enabled
-  if (rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    bk::native::OnFrameEnd(base, g_frame_index++, g_current_frame);
-    g_current_frame.clear();
-    // bk::native_gpu::RenderFrame(base);  // deferred pending guest crash fix
-  }
-
-  // Call original VdSwap so emulated GPU output renders normally
-  if (g_real_vd_swap) {
-    g_real_vd_swap(ctx, base);
-  } else {
-    REXLOG_WARN("bk native-render: __imp__VdSwap original not resolved");
-  }
-
+  if (g_real_vd_swap) g_real_vd_swap(ctx, base);
+  else REXLOG_WARN("bk native-render: __imp__VdSwap original not resolved - guest may spin");
   g_in_hook = false;
 }
-
-//------------------------------------------------------------------------------
-// __imp__VdInitializeRingBuffer - GPU ring buffer initialization
 
 extern "C" void __imp__VdInitializeRingBuffer(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true") {
-    REXLOG_INFO("bk native-render: VdInitializeRingBuffer called");
-  }
-
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true") REXLOG_INFO("bk native-render: VdInitializeRingBuffer called");
   using Fn = void (*)(PPCContext&, uint8_t*);
-  static Fn real = nullptr;
-  static bool resolved = false;
-  if (!resolved) {
-    resolved = true;
-    real = reinterpret_cast<Fn>(
-        dlsym(RTLD_NEXT, "__imp__VdInitializeRingBuffer"));
-  }
+  static Fn real = nullptr; static bool resolved = false;
+  if (!resolved) { resolved = true; real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "__imp__VdInitializeRingBuffer")); }
   if (real) real(ctx, base);
-
   g_in_hook = false;
 }
 
-//------------------------------------------------------------------------------
-// __imp__VdEnableRingBufferRPtrWriteBack - Ring buffer read pointer writeback
-
-extern "C" void __imp__VdEnableRingBufferRPtrWriteBack(PPCContext& ctx,
-                                                        uint8_t* base) {
+extern "C" void __imp__VdEnableRingBufferRPtrWriteBack(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true") {
-    REXLOG_INFO("bk native-render: VdEnableRingBufferRPtrWriteBack called");
-  }
-
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true") REXLOG_INFO("bk native-render: VdEnableRingBufferRPtrWriteBack called");
   using Fn = void (*)(PPCContext&, uint8_t*);
-  static Fn real = nullptr;
-  static bool resolved = false;
-  if (!resolved) {
-    resolved = true;
-    real = reinterpret_cast<Fn>(
-        dlsym(RTLD_NEXT, "__imp__VdEnableRingBufferRPtrWriteBack"));
-  }
+  static Fn real = nullptr; static bool resolved = false;
+  if (!resolved) { resolved = true; real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "__imp__VdEnableRingBufferRPtrWriteBack")); }
   if (real) real(ctx, base);
-
   g_in_hook = false;
 }
-
-//------------------------------------------------------------------------------
-// sub_824E04B0 - Pre-swap ring buffer processing
 
 extern "C" void sub_824E04B0(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
-
-  static int e04b0_call_count = 0;
-  e04b0_call_count++;
-  if (e04b0_call_count <= 10) {
-    fprintf(stderr, "=== bk native-render: sub_824E04B0 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
-            e04b0_call_count, ctx.r3.u32, ctx.r4.u32);
-  }
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+  static int e04b0_call_count = 0; e04b0_call_count++;
+  if (e04b0_call_count <= 10) fprintf(stderr, "=== bk native-render: sub_824E04B0 hook called #%d (r3=0x%08X r4=0x%08X) ===
+", e04b0_call_count, ctx.r3.u32, ctx.r4.u32);
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true" && rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_current_frame.push_back({0, ctx.r3.u32, ctx.r4.u32, 0});
   }
-
   using Fn = void (*)(PPCContext&, uint8_t*);
-  static Fn real = nullptr;
-  static bool resolved = false;
-  if (!resolved) {
-    resolved = true;
-    real = reinterpret_cast<Fn>(
-        dlsym(RTLD_NEXT, "__imp__sub_824E04B0"));
-  }
+  static Fn real = nullptr; static bool resolved = false;
+  if (!resolved) { resolved = true; real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "__imp__sub_824E04B0")); }
   if (real) real(ctx, base);
-
   g_in_hook = false;
 }
-
-//------------------------------------------------------------------------------
-// sub_824E5568 - Main mesh submission (draw call)
 
 extern "C" void sub_824E5568(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
-
-  static int e5568_call_count = 0;
-  e5568_call_count++;
-  if (e5568_call_count <= 10) {
-    fprintf(stderr, "=== bk native-render: sub_824E5568 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
-            e5568_call_count, ctx.r3.u32, ctx.r4.u32);
-  }
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+  static int e5568_call_count = 0; e5568_call_count++;
+  if (e5568_call_count <= 10) fprintf(stderr, "=== bk native-render: sub_824E5568 hook called #%d (r3=0x%08X r4=0x%08X) ===
+", e5568_call_count, ctx.r3.u32, ctx.r4.u32);
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true" && rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_current_frame.push_back({1, ctx.r3.u32, ctx.r4.u32, 0});
   }
-
   using Fn = void (*)(PPCContext&, uint8_t*);
-  static Fn real = nullptr;
-  static bool resolved = false;
-  if (!resolved) {
-    resolved = true;
-    real = reinterpret_cast<Fn>(
-        dlsym(RTLD_NEXT, "__imp__sub_824E5568"));
-  }
+  static Fn real = nullptr; static bool resolved = false;
+  if (!resolved) { resolved = true; real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "__imp__sub_824E5568")); }
   if (real) real(ctx, base);
-
   g_in_hook = false;
 }
-
-//------------------------------------------------------------------------------
-// sub_824DF5F8 - Draw submission (lower level)
 
 extern "C" void sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
-
-  static int df5f8_call_count = 0;
-  df5f8_call_count++;
-  if (df5f8_call_count <= 10) {
-    fprintf(stderr, "=== bk native-render: sub_824DF5F8 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
-            df5f8_call_count, ctx.r3.u32, ctx.r4.u32);
-  }
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
+  static int df5f8_call_count = 0; df5f8_call_count++;
+  if (df5f8_call_count <= 10) fprintf(stderr, "=== bk native-render: sub_824DF5F8 hook called #%d (r3=0x%08X r4=0x%08X) ===
+", df5f8_call_count, ctx.r3.u32, ctx.r4.u32);
+  if (rex::cvar::GetFlagByName("bk_native_render") == "true" && rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_current_frame.push_back({2, ctx.r3.u32, ctx.r4.u32, 0});
   }
-
   using Fn = void (*)(PPCContext&, uint8_t*);
-  static Fn real = nullptr;
-  static bool resolved = false;
-  if (!resolved) {
-    resolved = true;
-    real = reinterpret_cast<Fn>(
-        dlsym(RTLD_NEXT, "__imp__sub_824DF5F8"));
-  }
+  static Fn real = nullptr; static bool resolved = false;
+  if (!resolved) { resolved = true; real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "__imp__sub_824DF5F8")); }
   if (real) real(ctx, base);
-
   g_in_hook = false;
 }
 
@@ -358,21 +211,20 @@ extern "C" void sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
 void Install() {
   bool native_render = rex::cvar::GetFlagByName("bk_native_render") == "true";
   bool native_scene = rex::cvar::GetFlagByName("bk_native_render_scene") == "true";
-  REXLOG_INFO("bk native-render: Install() called (native_render=%d, native_scene=%d)",
-              native_render, native_scene);
-  if (!native_render) {
-    return;
-  }
+  REXLOG_INFO("bk native-render: Install() called (native_render=%d, native_scene=%d)", native_render, native_scene);
+  if (!native_render) return;
   if (!g_announced.exchange(true)) {
     REXLOG_INFO("bk native-render hook layer enabled");
+#if BK_NATIVE_GUEST_HOOKS
     REXLOG_INFO("bk native-render: hooked __imp__VdSwap (frame boundary)");
     REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
     REXLOG_INFO("bk native-render: hooked sub_824E5568 (mesh submission)");
     REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
+#else
+    REXLOG_INFO("bk native-render: guest hooks disabled (BK_NATIVE_GUEST_HOOKS=0)");
+#endif
   }
-  if (native_scene) {
-    bk::native_gpu::Install();
-  }
+  if (native_scene) bk::native_gpu::Install();
 }
 
 }  // namespace bk::native_render

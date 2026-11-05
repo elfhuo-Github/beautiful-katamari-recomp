@@ -1,6 +1,6 @@
 // beautiful_katamari - native renderer frame scene.
 //
-// Data-driven scene renderer: consumes the per-frame MeshContext / draw
+// Data-driven scene renderer: consumes the per-frame mesh context / draw
 // stream collected by bk_native_render.cpp, walks the verified guest
 // structures into a compact NativeFrameScene, and renders it with our own
 // shaders, replacing the emulated xenos GPU output when active.
@@ -87,13 +87,10 @@ struct SubmitRecord {
 uint32_t CaptureDynamicState(uint8_t* base, uint32_t ctx, bool world_path = false,
                              bool drew_inside = false);
 
-// Convenience overload.
-uint32_t CaptureDynamicState(uint8_t* base, uint32_t ctx);
-
-// Called at the swap boundary: builds the native frame scene from captured
+// Called at the swap boundary: builds the native scene scene from captured
 // records, paces the guest frame rate.
 void OnFrameEnd(uint8_t* base, uint64_t frame_index,
-                const std::vector<SubmitRecord>& records);
+                const std::vector<DrawItem>& items);
 
 // Total guest draws completed (any draw function). Sampled around the
 // original RenderMesh call to detect deferred meshes.
