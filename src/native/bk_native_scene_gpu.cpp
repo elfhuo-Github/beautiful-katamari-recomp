@@ -793,8 +793,7 @@ void render_thread_func() {
   fprintf(stderr, "=== bk native GPU renderer: Vulkan initialized in render thread ===\n");
   REXLOG_INFO("bk native GPU renderer: Vulkan initialized in render thread");
 
-  // Render loop at 60 FPS
-  const auto frame_time = std::chrono::milliseconds(16);
+  // Render loop (uncapped - runs as fast as Vulkan allows)
   while (!g.render_thread_should_stop) {
     auto start = std::chrono::steady_clock::now();
 
@@ -938,9 +937,7 @@ void render_thread_func() {
 
     auto end = std::chrono::steady_clock::now();
     auto elapsed = end - start;
-    if (elapsed < frame_time) {
-      std::this_thread::sleep_for(frame_time - elapsed);
-    }
+    (void)elapsed;
   }
 
   g.render_thread_running = false;
