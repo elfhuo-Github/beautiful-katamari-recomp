@@ -1,145 +1,49 @@
 #!/usr/bin/env python3
-"""Generate minimal SPIR-V shaders for the native Vulkan renderer."""
+"""Generate minimal valid SPIR-V shaders for Beautiful Katamari native Vulkan renderer."""
 
 import struct
 
-# SPIR-V opcodes (from spec)
+def u32(x):
+    return struct.pack('<I', x & 0xFFFFFFFF)
+
+# SPIR-V opcodes
 OpCapability = 11
 OpMemoryModel = 14
 OpEntryPoint = 15
 OpSource = 18
 OpName = 19
-OpMemberName = 20
-OpString = 21
-OpLine = 22
-OpExtension = 23
-OpExtInstImport = 24
-OpExtInst = 25
+OpDecorate = 39
 OpTypeVoid = 60
 OpTypeFunction = 61
 OpTypeFloat = 64
 OpTypeVector = 65
-OpTypeMatrix = 66
-OpTypeImage = 67
-OpTypeSampledImage = 68
 OpTypeInt = 70
 OpTypePointer = 71
 OpConstant = 72
-OpConstantComposite = 73
-OpSampler = 76
-OpConstantNull = 74
-OpReturn = 258
-OpReturnValue = 259
 OpVariable = 59
-OpAccessChain = 92
-OpCompositeConstruct = 80
-OpVectorTimesMatrix = 164
-OpDecorate = 39
-OpVariable = 59
-OpFunction = 75
-OpFunctionEnd = 76
-OpFunctionParameter = 77
-OpMemberDecorate = 31
-OpTypeStruct = 77
 OpLabel = 80
 OpStore = 88
-OpLoad = 89
-OpAccessChain = 92
-OpCompositeConstruct = 80  # Will fix
-OpCompositeConstruct = 80
+OpReturn = 258
+OpFunction = 75
 
-# Correct values from SPIR-V spec:
-OpCompositeConstruct = 80  # I need to verify this
-# From spec: OpCompositeConstruct = 80? Let me just use values I'm sure about
-# OpCompositeConstruct is actually 80 in some versions... let me check
-# Actually OpCompositeConstruct = 80 is wrong. The correct value is:
-OpCompositeConstruct = 80  # Placeholder - I'll verify
-
-# From the SPIR-V core grammar:
-# OpCapability = 11
-# OpTypeVoid = 60
-# OpTypeFunction = 61
-# OpTypeFloat = 64
-# OpTypeVector = 65
-# OpTypeMatrix = 66
-# OpTypeInt = 70
-# OpTypePointer = 71
-# OpConstant = 72
-# OpConstantComposite = 73
-# OpSampler = 76
-# OpConstantNull = 74
-# OpFunction = 75
-# OpFunctionEnd = 76
-# OpFunctionParameter = 77
-# OpLabel = 80
-# OpStore = 88
-# OpLoad = 89
-# OpAccessChain = 92
-# OpCompositeConstruct = 80
-# OpVectorTimesMatrix = 164
-# OpMemberDecorate = 31
-# OpDecorate = 39
-# OpSource = 18
-# OpEntryPoint = 15
-# OpMemoryModel = 14
-
-# Decorations
-RelaxedPrecision = 1
-Location = 37
-DescriptorSet = 38
-Binding = 39
-Block = 40
-BuiltIn = 43
-Offset = 0
-
-# Storage classes
 Input = 1
 UniformConstant = 0
-Uniform = 4
 Output = 5
 
-# Addressing / Memory
+Location = 37
+BuiltIn = 43
+
 Logical = 0
 GLSL450 = 1
 
-# Execution models
 Vertex = 0
 Fragment = 1
 
-# BuiltIn
 Position = 43
 
-# Capability
 Shader = 0
 
-
-def u32(x):
-    return struct.pack('<I', x & 0xFFFFFFFF)
-
-
-def instr(opcode, *operands):
-    words = 2 + len(operands)
-    header = struct.pack('<I', (words << 16) | opcode)
-    body = b''.join(u32(o) for o in operands)
-    return header + body
-
-
-def instr_str(opcode, name_str, *fixed_ops):
-    name_bytes = name_str.encode('utf-8') + b'\x00'
-    pad = (4 - len(name_bytes) % 4) % 4
-    name_bytes += b'\x00' * pad
-    name_words = len(name_bytes) // 4
-    words = 2 + len(fixed_ops) + name_words
-    header = struct.pack('<I', (words << 16) | opcode)
-    body = b''.join(u32(o) for o in fixed_ops)
-    return header + body + name_bytes
-
-
-def build_header(bound):
-    return struct.pack('<IIIII', 0x07230203, 0x00010400, 0, bound, 0)
-
-
-class SpvBuilder:
+class Builder:
     def __init__(self):
         self.insts = []
         self.next_id = 1
@@ -151,10 +55,19 @@ class SpvBuilder:
         return self.next_id
 
     def emit(self, opcode, *operands):
-        self.insts.append(instr(opcode, *operands))
+        self.insts.append(struct.pack('<I', (words << 16) | opcode))
+        for o in operands:
+            self.insts.append(u32(o))
 
     def emit_str(self, opcode, name_str, *fixed_ops):
-        self.insts.append(instr_str(opcode, name_str, *fixed_ops))
+        name_bytes = name_str.encode('utf-8') + b'\x00'
+        pad = (4 - len(name_bytes) % 4) % 4
+        name_bytes += b'\x00' * pad
+        name_words = len(name_bytes) // 4
+        words = 1 + len(fixed_ops) + name_words
+        self.insts.append(struct.pack('<I', (words << 16) | opcode))
+        self.insts += b''.join(u32(o) for o in fixed_ops)
+        self.insts += name_bytes
 
     def capability(self, cap):
         self.emit(OpCapability, cap)
@@ -162,8 +75,8 @@ class SpvBuilder:
     def memory_model(self, addressing, model):
         self.emit(OpMemoryModel, addressing, model)
 
-    def entry_point(self, exec_model, entry_id, name, *interfaces):
-        self.emit_str(OpEntryPoint, name, exec_model, entry_id, *interfaces)
+    def entry_point(self, exec_model, entry_id, name_str, *interfaces):
+        self.insts.append(instr_entry_point(exec_model, entry_id, name_str, list(interfaces)))
 
     def source(self, lang, version):
         self.emit(OpSource, lang, version)
@@ -189,11 +102,6 @@ class SpvBuilder:
     def type_vector(self, component_id, count):
         id_ = self.new_id()
         self.emit(OpTypeVector, id_, component_id, count)
-        return id_
-
-    def type_matrix(self, column_type_id, count):
-        id_ = self.new_id()
-        self.emit(OpTypeMatrix, id_, column_type_id, count)
         return id_
 
     def type_int(self, width=32, signed=1):
@@ -226,22 +134,9 @@ class SpvBuilder:
         self.emit(OpConstant, id_, type_id, bits)
         return id_
 
-    def constant_composite(self, type_id, constituents):
+    def variable(self, type_id, storage_class):
         id_ = self.new_id()
-        self.emit(OpConstantComposite, id_, type_id, *constituents)
-        return id_
-
-    def constant_null(self, type_id):
-        id_ = self.new_id()
-        self.emit(OpConstantNull, id_, type_id)
-        return id_
-
-    def variable(self, type_id, storage_class, initializer=None):
-        id_ = self.new_id()
-        if initializer is not None:
-            self.emit(OpVariable, id_, type_id, storage_class, initializer)
-        else:
-            self.emit(OpVariable, id_, type_id, storage_class)
+        self.emit(OpVariable, id_, type_id, storage_class)
         return id_
 
     def function(self, type_id, func_id, control, function_type_id):
@@ -250,21 +145,10 @@ class SpvBuilder:
     def function_end(self):
         self.emit(OpFunctionEnd)
 
-    def function_parameter(self, type_id):
-        id_ = self.new_id()
-        self.emit(OpFunctionParameter, id_, type_id)
-        return id_
-
     def label(self):
         id_ = self.new_id()
         self.emit(OpLabel, id_)
         return id_
-
-    def return_(self):
-        self.emit(OpReturn)
-
-    def return_value(self, value_id):
-        self.emit(OpReturnValue, value_id)
 
     def load(self, type_id, ptr_id):
         id_ = self.new_id()
@@ -279,23 +163,23 @@ class SpvBuilder:
         self.emit(OpAccessChain, id_, type_id, base_ptr, *indexes)
         return id_
 
-    def composite_construct(self, type_id, constituents):
+    def composite_construct(self, type_id, *constituents):
         id_ = self.new_id()
         self.emit(OpCompositeConstruct, id_, type_id, *constituents)
         return id_
 
     def vector_times_matrix(self, type_id, vector, matrix):
         id_ = self.new_id()
-        self.emit(164, id_, type_id, vector, matrix)
+        self.emit(OpVectorTimesMatrix, id_, type_id, vector, matrix)
         return id_
 
     def build(self):
-        header = build_header(self.bound)
+        header = make_header(self.bound)
         return header + b''.join(self.insts)
 
 
 def build_vertex_shader():
-    b = SpvBuilder()
+    b = Builder()
 
     b.capability(Shader)
     b.memory_model(Logical, GLSL450)
@@ -311,18 +195,12 @@ def build_vertex_shader():
     ptr_input_v4 = b.type_pointer(Input, vec4_t)
     ptr_output_v4 = b.type_pointer(Output, vec4_t)
 
-    struct_uniforms = b.type_struct([mat4_t])
-    b.member_decorate(struct_uniforms, 0, 0, 0)
-    b.decorate(struct_uniforms, Block)
-
-    ptr_uniform_struct = b.type_pointer(UniformConstant, struct_uniforms)
+    struct_uni = b.type_struct([mat4_t])
+    b.member_decorate(struct_uni, 0, Offset, 0)
+    b.decorate(struct_uni, Block)
+    ptr_uniform_struct = b.type_pointer(UniformConstant, struct_uni)
 
     func_type = b.type_function(void_t, [])
-
-    main_id = b.new_id()
-    b.entry_point(Vertex, main_id, "main")
-    b.source(GLSL450, 450)
-    b.name(main_id, "main")
 
     in_position = b.variable(ptr_input_v3, Input)
     b.decorate(in_position, Location, 0)
@@ -345,6 +223,12 @@ def build_vertex_shader():
     b.decorate(v_color, Location, 0)
     b.name(v_color, "v_color")
 
+    main_id = b.new_id()
+    b.entry_point(Vertex, main_id, "main", in_position, in_color, gl_position, v_color, uniforms_var)
+
+    b.source(GLSL450, 450)
+    b.name(main_id, "main")
+
     b.function(void_t, main_id, 0, func_type)
     b.label()
 
@@ -356,7 +240,7 @@ def build_vertex_shader():
     color = b.load(vec4_t, in_color)
 
     float_1 = b.constant(float_t, 1.0)
-    pos4 = b.composite_construct(vec4_t, [pos, float_1])
+    pos4 = b.composite_construct(vec4_t, pos, float_1)
 
     gl_pos = b.vector_times_matrix(vec4_t, pos4, view_proj)
     b.store(gl_position, gl_pos)
@@ -370,7 +254,7 @@ def build_vertex_shader():
 
 
 def build_fragment_shader():
-    b = SpvBuilder()
+    b = Builder()
 
     b.capability(Shader)
     b.memory_model(Logical, GLSL450)
@@ -385,11 +269,6 @@ def build_fragment_shader():
 
     func_type = b.type_function(void_t, [])
 
-    main_id = b.new_id()
-    b.entry_point(Fragment, main_id, "main")
-    b.source(GLSL450, 450)
-    b.name(main_id, "main")
-
     v_color = b.variable(ptr_input_v4, Input)
     b.decorate(v_color, Location, 0)
     b.name(v_color, "v_color")
@@ -397,6 +276,12 @@ def build_fragment_shader():
     out_color = b.variable(ptr_output_v4, Output)
     b.decorate(out_color, Location, 0)
     b.name(out_color, "out_color")
+
+    main_id = b.new_id()
+    b.entry_point(Fragment, main_id, "main", v_color, out_color)
+
+    b.source(GLSL450, 450)
+    b.name(main_id, "main")
 
     b.function(void_t, main_id, 0, func_type)
     b.label()
@@ -413,13 +298,9 @@ def build_fragment_shader():
 if __name__ == '__main__':
     vert_spv = build_vertex_shader()
     frag_spv = build_fragment_shader()
-
     with open('basic.vert.spv', 'wb') as f:
         f.write(vert_spv)
     with open('basic.frag.spv', 'wb') as f:
         f.write(frag_spv)
-
-    print(f"Vertex shader: {len(vert_spv)} bytes")
-    print(f"Fragment shader: {len(frag_spv)} bytes")
-    print(f"Vertex SPIR-V hex: {vert_spv.hex()}")
-    print(f"Fragment SPIR-V hex: {frag_spv.hex()}")
+    print(f"Vertex shader: {len(vert_spv)} bytes ({len(vert_spv)//4} words)")
+    print(f"Fragment shader: {len(frag_spv)} bytes ({len(frag_spv)//4} words)")

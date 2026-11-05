@@ -21,6 +21,24 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
+VkDebugUtilsMessengerEXT g_debug_messenger = VK_NULL_HANDLE;
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+    VkDebugUtilsMessageTypeFlagsEXT message_type,
+    const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
+    void* p_user_data) {
+    if (message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        fprintf(stderr, "[Vulkan Debug] %s: %s\n",
+                p_callback_data->pMessageIdName ? p_callback_data->pMessageIdName : "?",
+                p_callback_data->pMessage ? p_callback_data->pMessage : "(no message)");
+    }
+    return VK_FALSE;
+}
+
+PFN_vkCreateDebugUtilsMessengerEXT pfnCreateDebugUtilsMessengerEXT = nullptr;
+PFN_vkDestroyDebugUtilsMessengerEXT pfnDestroyDebugUtilsMessengerEXT = nullptr;
+
 namespace bk::native_gpu {
 namespace {
 
@@ -114,6 +132,10 @@ bool init_instance_and_surface() {
   const char* const* exts = SDL_Vulkan_GetInstanceExtensions(&ext_count);
   if (!exts) return false;
 
+  // Add debug utils extension
+  std::vector<const char*> instance_exts(exts, exts + ext_count);
+  instance_exts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
   VkApplicationInfo ai = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
   ai.pApplicationName = "BKNativeRenderer";
   ai.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -123,8 +145,9 @@ bool init_instance_and_surface() {
 
   VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
   ici.pApplicationInfo = &ai;
-  ici.enabledExtensionCount = ext_count;
-  ici.ppEnabledExtensionNames = exts;
+  ici.enabledExtensionCount = (uint32_t)instance_exts.size();
+  ici.ppEnabledExtensionNames = instance_exts.data();
+  ici.enabledLayerCount = 0;
 
   VkResult vr = vkCreateInstance(&ici, nullptr, &g.instance);
   if (vr != VK_SUCCESS) {
@@ -132,6 +155,33 @@ bool init_instance_and_surface() {
     return false;
   }
   fprintf(stderr, "=== bk native GPU renderer: vkCreateInstance succeeded ===\n");
+
+  // Load debug utils function pointers
+  pfnCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(g.instance, "vkCreateDebugUtilsMessengerEXT");
+  pfnDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(g.instance, "vkDestroyDebugUtilsMessengerEXT");
+
+  // Create debug messenger
+  if (pfnCreateDebugUtilsMessengerEXT) {
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
+    debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                  VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                  VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    debugCreateInfo.pfnUserCallback = debug_callback;
+    debugCreateInfo.pUserData = nullptr;
+
+    VkResult dr = pfnCreateDebugUtilsMessengerEXT(g.instance, &debugCreateInfo, nullptr, &g_debug_messenger);
+    if (dr != VK_SUCCESS) {
+      fprintf(stderr, "=== bk native GPU renderer: vkCreateDebugUtilsMessengerEXT failed: %d ===\n", dr);
+    } else {
+      fprintf(stderr, "=== bk native GPU renderer: debug messenger created ===\n");
+    }
+  } else {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateDebugUtilsMessengerEXT not available ===\n");
+  }
 
   if (!SDL_Vulkan_CreateSurface(g.window, g.instance, nullptr, &g.surface)) {
     fprintf(stderr, "=== bk native GPU renderer: SDL_Vulkan_CreateSurface failed ===\n");
@@ -324,13 +374,18 @@ bool init_instance_and_surface() {
   gpci.renderPass = g.render_pass;
   gpci.subpass = 0;
 
-  // Skip graphics pipeline for now - just do clear + present
+  VkResult vr3 = vkCreateGraphicsPipelines(g.device, VK_NULL_HANDLE, 1, &gpci, nullptr,
+                                &g.pipeline);
+  if (vr3 != VK_SUCCESS) {
+    fprintf(stderr, "=== bk native GPU renderer: vkCreateGraphicsPipelines failed: %d ===\n", vr3);
+    vkDestroyShaderModule(g.device, vsm, nullptr);
+    vkDestroyShaderModule(g.device, fsm, nullptr);
+    return false;
+  }
+  fprintf(stderr, "=== bk native GPU renderer: vkCreateGraphicsPipelines succeeded ===\n");
+
   vkDestroyShaderModule(g.device, vsm, nullptr);
   vkDestroyShaderModule(g.device, fsm, nullptr);
-  g.pipeline = VK_NULL_HANDLE;
-  g.layout = VK_NULL_HANDLE;
-  g.dsl = VK_NULL_HANDLE;
-  fprintf(stderr, "=== bk native GPU renderer: skipping graphics pipeline (clear-only mode) ===\n");
 
   // Vertex/index buffers
   VkBufferCreateInfo bci = {};
@@ -783,6 +838,79 @@ void render_thread_func() {
       rpbi.clearValueCount = 1;
       rpbi.pClearValues = &clear;
       vkCmdBeginRenderPass(g.cmd[fi], &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+
+      if (g.pipeline != VK_NULL_HANDLE && !scene.items.empty()) {
+        vkCmdBindPipeline(g.cmd[fi], VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline);
+        vkCmdBindDescriptorSets(g.cmd[fi], VK_PIPELINE_BIND_POINT_GRAPHICS, g.layout, 0, 1,
+                                &g.dset[fi], 0, nullptr);
+
+        VkViewport vp = {0.0f, 0.0f, (float)g.width, (float)g.height, 0.0f, 1.0f};
+        VkRect2D sc = {{0, 0}, {g.width, g.height}};
+        vkCmdSetViewport(g.cmd[fi], 0, 1, &vp);
+        vkCmdSetScissor(g.cmd[fi], 0, 1, &sc);
+
+        VkDeviceSize vb_offset = 0;
+        vkCmdBindVertexBuffers(g.cmd[fi], 0, 1, &g.vb, &vb_offset);
+
+        // Upload vertex/index data from guest memory to staging buffers
+        size_t total_vb = 0;
+        size_t total_ib = 0;
+        for (auto& item : scene.items) {
+          total_vb += item.vb_bytes;
+          total_ib += item.ib_count * 4;
+        }
+
+        if (total_vb > 0) {
+          void* stage_data;
+          vkMapMemory(g.device, g.stage_vbmem, 0, total_vb, 0, &stage_data);
+          uint8_t* dst = static_cast<uint8_t*>(stage_data);
+          for (auto& item : scene.items) {
+            if (item.vb_data && item.vb_bytes > 0) {
+              memcpy(dst, item.vb_data, item.vb_bytes);
+              dst += item.vb_bytes;
+            }
+          }
+          vkUnmapMemory(g.device, g.stage_vbmem);
+        }
+
+        if (total_ib > 0) {
+          void* stage_data;
+          vkMapMemory(g.device, g.stage_ibmem, 0, total_ib, 0, &stage_data);
+          uint8_t* dst = static_cast<uint8_t*>(stage_data);
+          for (auto& item : scene.items) {
+            size_t ib_bytes = item.ib_count * 4;
+            if (item.ib_data && ib_bytes > 0) {
+              memcpy(dst, item.ib_data, ib_bytes);
+              dst += ib_bytes;
+            }
+          }
+          vkUnmapMemory(g.device, g.stage_ibmem);
+        }
+
+        // Draw items
+        size_t vb_offset_accum = 0;
+        size_t ib_offset_accum = 0;
+        for (auto& item : scene.items) {
+          if (item.vb_data && item.vb_bytes > 0) {
+            VkBufferCopy copy_region = {vb_offset_accum, vb_offset_accum, item.vb_bytes};
+            vkCmdCopyBuffer(g.cmd[fi], g.stage_vb, g.vb, 1, &copy_region);
+          }
+
+          vkCmdBindVertexBuffers(g.cmd[fi], 0, 1, &g.vb, &vb_offset_accum);
+
+          VkDeviceSize ib_offset = ib_offset_accum;
+          vkCmdBindIndexBuffer(g.cmd[fi], g.ib, ib_offset, VK_INDEX_TYPE_UINT32);
+
+          for (auto& draw : item.draws) {
+            vkCmdDrawIndexed(g.cmd[fi], draw.index_count, 1, draw.start_index,
+                             draw.base_vertex, 0);
+          }
+
+          vb_offset_accum += item.vb_bytes;
+          ib_offset_accum += item.ib_count * 4;
+        }
+      }
+
       vkCmdEndRenderPass(g.cmd[fi]);
       vkEndCommandBuffer(g.cmd[fi]);
 
