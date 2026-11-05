@@ -50,6 +50,20 @@ rexglue_setup_target(beautiful_katamari GPU_PLUGINS xenos)
 # real implementation is still reached via dlsym(RTLD_NEXT).
 if(UNIX AND NOT APPLE)
     target_link_options(beautiful_katamari PRIVATE -Wl,--export-dynamic -Wl,-Bsymbolic-functions)
+    # Wrap guest import thunks so our hooks can call the originals via __real_*.
+    # Without this, dlsym(RTLD_NEXT) cannot see symbols defined in the same
+    # executable, so the original guest functions never run (black screen).
+    target_link_options(beautiful_katamari PRIVATE
+        -Wl,--wrap=__imp__VdSwap
+        -Wl,--wrap=__imp__VdInitializeRingBuffer
+        -Wl,--wrap=__imp__VdEnableRingBufferRPtrWriteBack
+        -Wl,--wrap=__imp__sub_824E04B0
+        -Wl,--wrap=sub_824E04B0
+        -Wl,--wrap=__imp__sub_824E5568
+        -Wl,--wrap=sub_824E5568
+        -Wl,--wrap=__imp__sub_824DF5F8
+        -Wl,--wrap=sub_824DF5F8
+    )
 endif()
 
 # Perf tuning for the recompiled guest code (host side).
