@@ -37,7 +37,7 @@ bk_guest_fps_cap = 0
 # Graphics / Presentation
 #---------------------------------------------------------------
 # Enable vertical sync
-vsync = true
+vsync = false
 
 # Resolution scale multiplier
 resolution_scale = 1
