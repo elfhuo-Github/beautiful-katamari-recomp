@@ -36,7 +36,7 @@ REXCVAR_DEFINE_BOOL(bk_native_render_scene, false, "Beautiful Katamari", "Render
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(bk_native_render_scene_debug, 0, "Beautiful Katamari", "Native scene debug: 0=normal, 1=clear only, 2=solid color per item, 3=limit to 32 items, 4=disable depth test.")
     .range(0, 4).lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_DOUBLE(bk_guest_fps_cap, 60.0, "Beautiful Katamari", "Pace the guest render loop to this frame rate (0 = uncapped).")
+REXCVAR_DEFINE_DOUBLE(bk_guest_fps_cap, 0.0, "Beautiful Katamari", "Pace the guest render loop to this frame rate (0 = uncapped).")
     .range(0.0, 1000.0).lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace {
