@@ -50,7 +50,7 @@ draw_resolution_scale_y = 1
 native_2x_msaa = false
 
 # Render target path: "fbo" (host Vulkan render targets) or "fsi" (fragment shader interlock)
-render_target_path_vulkan = "fsi"
+render_target_path_vulkan = "fbo"
 
 # Readback resolve: "none" (fastest), "full" (expensive - reads entire frame buffer)
 readback_resolve = "none"
