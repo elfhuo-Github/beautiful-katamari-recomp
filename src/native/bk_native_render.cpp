@@ -36,7 +36,7 @@ extern "C" void __real___imp__sub_824DF5F8(PPCContext&, uint8_t*);
 namespace bk::native_render {
 REXCVAR_DEFINE_BOOL(bk_native_render, true, "Beautiful Katamari", "Enable the Beautiful Katamari native renderer hook layer.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-REXCVAR_DEFINE_BOOL(bk_native_render_scene, false, "Beautiful Katamari", "Render the game scene natively from the hooked draw stream, replacing the emulated xenos GPU output.")
+REXCVAR_DEFINE_BOOL(bk_native_render_scene, true, "Beautiful Katamari", "Render the game scene natively from the hooked draw stream, replacing the emulated xenos GPU output.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(bk_native_render_scene_debug, 0, "Beautiful Katamari", "Native scene debug: 0=normal, 1=clear only, 2=solid color per item, 3=limit to 32 items, 4=disable depth test.")
     .range(0, 4).lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -143,7 +143,7 @@ extern "C" void __wrap___imp__sub_824E04B0(PPCContext& ctx, uint8_t* base) {
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({0, ctx.r3.u32, ctx.r4.u32, 0});
+    g_current_frame.push_back({ctx.r3.u32, 0, ctx.r4.u32, 0});
   }
 
   __real___imp__sub_824E04B0(ctx, base);
@@ -165,7 +165,7 @@ extern "C" void __wrap___imp__sub_824E5568(PPCContext& ctx, uint8_t* base) {
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({1, ctx.r3.u32, ctx.r4.u32, 0});
+    g_current_frame.push_back({ctx.r3.u32, 1, ctx.r4.u32, 0});
   }
 
   __real___imp__sub_824E5568(ctx, base);
@@ -187,7 +187,7 @@ extern "C" void __wrap___imp__sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({2, ctx.r3.u32, ctx.r4.u32, 0});
+    g_current_frame.push_back({ctx.r3.u32, 2, ctx.r4.u32, 0});
   }
 
   __real___imp__sub_824DF5F8(ctx, base);
