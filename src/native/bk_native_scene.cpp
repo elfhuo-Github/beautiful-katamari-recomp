@@ -139,6 +139,17 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     g_frames_since_fps = 0;
   }
 
+  // Debug: log first frame's contexts for reverse-engineering
+  static bool g_first_frame_logged = false;
+  if (!g_first_frame_logged && !items.empty()) {
+    g_first_frame_logged = true;
+    fprintf(stderr, "=== bk native-render: First frame contexts ===\n");
+    for (size_t i = 0; i < items.size() && i < 10; i++) {
+      fprintf(stderr, "  item[%zu] ctx=0x%08X kind=%u\n",
+              i, items[i].ctx, items[i].vb_obj);
+    }
+  }
+
   std::lock_guard<std::mutex> lock(g_build_mutex);
 
   FrameScene scene;
@@ -152,11 +163,25 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
   // Resolve each item (read guest memory for VB/IB pointers).
   // Items that fail resolution are dropped for this frame.
   int resolved = 0;
+  int failed_ctx[16] = {0};
+  int failed_count = 0;
   for (const auto& src : items) {
     DrawItem item = src; // mutable copy
     if (ResolveSceneDrawItem(base, item)) {
       scene.items.push_back(std::move(item));
       resolved++;
+    } else if (failed_count < 8) {
+      failed_ctx[failed_count++] = item.ctx;
+    }
+  }
+
+  // Log unresolved contexts once per second
+  static int g_unresolved_frame = 0;
+  if (failed_count > 0 && (g_frame - g_unresolved_frame) >= 60) {
+    g_unresolved_frame = g_frame;
+    fprintf(stderr, "=== bk native-render: Unresolved contexts ===\n");
+    for (int i = 0; i < failed_count; i++) {
+      fprintf(stderr, "  ctx=0x%08X\n", failed_ctx[i]);
     }
   }
 
