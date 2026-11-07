@@ -40,7 +40,7 @@ REXCVAR_DEFINE_BOOL(bk_native_render_scene, true, "Beautiful Katamari", "Render 
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(bk_native_render_scene_debug, 0, "Beautiful Katamari", "Native scene debug: 0=normal, 1=clear only, 2=solid color per item, 3=limit to 32 items, 4=disable depth test.")
     .range(0, 4).lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_DOUBLE(bk_guest_fps_cap, 0.0, "Beautiful Katamari", "Pace the guest render loop to this frame rate (0 = uncapped).")
+REXCVAR_DEFINE_DOUBLE(bk_guest_fps_cap, 60.0, "Beautiful Katamari", "Pace the guest render loop to this frame rate (0 = uncapped).")
     .range(0.0, 1000.0).lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace {
@@ -82,9 +82,21 @@ extern "C" void __wrap___imp__VdSwap(PPCContext& ctx, uint8_t* base) {
   g_in_hook = true;
 
   static int g_frame = 0;
+  static auto g_last_fps_time = std::chrono::steady_clock::now();
+  static int g_frames_since_fps = 0;
+
   g_frame++;
-  if (g_frame <= 3 || g_frame % 60 == 0) {
-    fprintf(stderr, "=== bk native-render: VdSwap frame %d ===\n", g_frame);
+  g_frames_since_fps++;
+
+  // Guest FPS report every second
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_last_fps_time);
+  if (elapsed >= std::chrono::milliseconds(1000)) {
+    double fps = g_frames_since_fps * 1000.0 / elapsed.count();
+    fprintf(stderr, "=== bk native-render: guest FPS=%.1f frame=%d ===\n",
+            fps, g_frame);
+    g_last_fps_time = now;
+    g_frames_since_fps = 0;
   }
 
   const bool enabled = rex::cvar::GetFlagByName("bk_native_render") == "true";

@@ -5,6 +5,7 @@
 #include "bk_native_guest_read.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
@@ -120,11 +121,22 @@ uint32_t CaptureDynamicState(uint8_t* base, uint32_t ctx) {
 
 void OnFrameEnd(uint8_t* base, uint64_t frame_index,
                 const std::vector<DrawItem>& items) {
-  (void)frame_index;
   static int g_frame = 0;
+  static auto g_last_fps_time = std::chrono::steady_clock::now();
+  static int g_frames_since_fps = 0;
+
   g_frame++;
-  if (g_frame <= 5 || g_frame % 60 == 0) {
-    REXLOG_INFO("bk native-render: frame %d items=%zu", g_frame, items.size());
+  g_frames_since_fps++;
+
+  // FPS report every second
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_last_fps_time);
+  if (elapsed >= std::chrono::milliseconds(1000)) {
+    double fps = g_frames_since_fps * 1000.0 / elapsed.count();
+    fprintf(stderr, "=== bk native-render: FPS=%.1f frame=%d items=%zu resolved=%d/%zu ===\n",
+            fps, g_frame, items.size(), 0, items.size());
+    g_last_fps_time = now;
+    g_frames_since_fps = 0;
   }
 
   std::lock_guard<std::mutex> lock(g_build_mutex);
@@ -149,8 +161,6 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
   }
 
   g_scene = std::move(scene);
-
-  REXLOG_INFO("bk native-render: OnFrameEnd resolved=%d/%zu", resolved, items.size());
 }
 
 uint64_t DrawSequence() { return g_draw_sequence; }
