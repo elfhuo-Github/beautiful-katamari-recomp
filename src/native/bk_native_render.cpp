@@ -36,7 +36,7 @@ extern "C" void __real___imp__sub_824DF5F8(PPCContext&, uint8_t*);
 namespace bk::native_render {
 REXCVAR_DEFINE_BOOL(bk_native_render, true, "Beautiful Katamari", "Enable the Beautiful Katamari native renderer hook layer.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-REXCVAR_DEFINE_BOOL(bk_native_render_scene, true, "Beautiful Katamari", "Render the game scene natively from the hooked draw stream, replacing the emulated xenos GPU output.")
+REXCVAR_DEFINE_BOOL(bk_native_render_scene, true, "Beautiful Katamari", "Render the game scene natively from the hooked draw stream with Vulkan.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_INT32(bk_native_render_scene_debug, 0, "Beautiful Katamari", "Native scene debug: 0=normal, 1=clear only, 2=solid color per item, 3=limit to 32 items, 4=disable depth test.")
     .range(0, 4).lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -81,11 +81,10 @@ extern "C" void __wrap___imp__VdSwap(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
-  static int swap_call_count = 0;
-  swap_call_count++;
-  if (swap_call_count <= 20) {
-    fprintf(stderr, "=== bk native-render: __imp__VdSwap hook called #%d (frame=%llu) ===\n",
-            swap_call_count, (unsigned long long)g_frame_index);
+  static int g_frame = 0;
+  g_frame++;
+  if (g_frame <= 3 || g_frame % 60 == 0) {
+    fprintf(stderr, "=== bk native-render: VdSwap frame %d ===\n", g_frame);
   }
 
   const bool enabled = rex::cvar::GetFlagByName("bk_native_render") == "true";
@@ -133,13 +132,6 @@ extern "C" void __wrap___imp__sub_824E04B0(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
-  static int e04b0_call_count = 0;
-  e04b0_call_count++;
-  if (e04b0_call_count <= 20) {
-    fprintf(stderr, "=== bk native-render: sub_824E04B0 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
-            e04b0_call_count, ctx.r3.u32, ctx.r4.u32);
-  }
-
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -155,13 +147,6 @@ extern "C" void __wrap___imp__sub_824E5568(PPCContext& ctx, uint8_t* base) {
   if (g_in_hook) return;
   g_in_hook = true;
 
-  static int e5568_call_count = 0;
-  e5568_call_count++;
-  if (e5568_call_count <= 20) {
-    fprintf(stderr, "=== bk native-render: sub_824E5568 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
-            e5568_call_count, ctx.r3.u32, ctx.r4.u32);
-  }
-
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -176,13 +161,6 @@ extern "C" void __wrap___imp__sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   static thread_local bool g_in_hook = false;
   if (g_in_hook) return;
   g_in_hook = true;
-
-  static int df5f8_call_count = 0;
-  df5f8_call_count++;
-  if (df5f8_call_count <= 20) {
-    fprintf(stderr, "=== bk native-render: sub_824DF5F8 hook called #%d (r3=0x%08X r4=0x%08X) ===\n",
-            df5f8_call_count, ctx.r3.u32, ctx.r4.u32);
-  }
 
   if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
       rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {

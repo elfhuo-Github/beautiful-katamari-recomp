@@ -15,18 +15,23 @@ to display it.
 - The game boots and reaches the main menu
 - Audio plays (music and sound effects)
 - Controller input works
-- Vulkan graphics pipeline initializes successfully
+- Native Vulkan renderer draws game geometry (replaces Xenia xenos GPU emulation)
 - The game runs at a playable frame rate in most scenes
 
-## What's in progress
+## Graphics (native Vulkan only)
 
-- **Native Vulkan rendering**: The game currently renders through an
-  emulated Xbox 360 GPU layer. We're building a native Vulkan renderer that
-  will eventually replace it for better performance and compatibility.
-  When enabled, you may see a black screen — this is expected while it's
-  under development. You can disable it to use the emulated path instead.
-- **Full game data**: The game data folder may be missing some assets.
-  Extracting from the original game ISO can help.
+Xenia xenos GPU emulation has been removed entirely. The game renders through
+the native Vulkan renderer, which hooks the guest's draw calls and renders
+them natively. Current limitations:
+
+- Textures: not yet implemented (draws appear as solid colors)
+- Camera/view-projection: identity matrix used (no camera extraction yet)
+- Vertex format: best-guess from guest memory analysis
+
+To disable native rendering (no GPU path at all):
+```
+./run.sh --native-scene-disable
+```
 
 ---
 
@@ -87,14 +92,12 @@ You can also press **F1** in-game to open a configuration dialog.
 
 ### Black screen
 
-If the screen is black, the native Vulkan renderer is likely enabled but
-not yet producing output. Fix it:
+If the screen is black, the native Vulkan renderer may be encountering an
+issue. Try:
 
-```
-./run.sh --no-native
-```
-
-Or set `bk_native_render_scene = false` in `config.toml`.
+- Checking that `bk_native_mesh_ctx_vb_bytes` matches your game version
+  (try values 0x10 or 0x34 in `config.toml`)
+- Using `--debug=2` for solid-color visualization per draw item
 
 ### Low frame rate (30–40 FPS in levels)
 
@@ -114,13 +117,25 @@ like `d02.dat`, `d03.dat`, `d04.dat`, `d05.dat`, and `default.xex`.
 ## Project layout
 
 ```
-/mnt/sdb/bkrecomp/BKReXGlue/
-├── config.toml              # runtime settings
-├── run.sh                   # launch script
-├── out/build/.../           # compiled game binary
-│   └── beautiful_katamari   # the executable
-└── src/native/              # native renderer source code
+/mnt/sdb/bkrecomp/
+├── Beautiful Katamari (USA) (En,Ja)/   # game data (d02.dat-d05.dat, default.xex)
+├── Beautiful Katamari (USA) (En,Ja).iso # original game ISO (7.8 GB)
+├── save/                                 # in-game save data (created by game)
+├── assets/                               # extracted assets (textures, models, etc.)
+└── BKReXGlue/
+    ├── config.toml              # runtime settings
+    ├── run.sh                   # launch script
+    ├── out/build/.../           # compiled game binary
+    │   └── beautiful_katamari   # the executable
+    └── src/native/              # native renderer source code
 ```
+
+Save data is stored in `/mnt/sdb/bkrecomp/save/` by default. The path can be
+changed in `config.toml` with the `save_path` setting.
+
+Asset files (extracted textures, models, shaders) go in
+`/mnt/sdb/bkrecomp/assets/`. The path can be changed with `assets_path` in
+`config.toml`.
 
 ---
 

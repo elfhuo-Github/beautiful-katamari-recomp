@@ -14,21 +14,34 @@
 # Path to Beautiful Katamari game data directory
 game_data_root = "/mnt/sdb/bkrecomp/Beautiful Katamari (USA) (En,Ja)"
 
+# Path to save data directory (in-game saves, created by the game)
+save_path = "/mnt/sdb/bkrecomp/save"
+
+# Path to assets directory (extracted textures, models, etc.)
+assets_path = "/mnt/sdb/bkrecomp/assets"
+
 # ---------------------------------------------------------------
 # Native Renderer
 #---------------------------------------------------------------
 # Enable the native renderer hook layer (requires restart)
 bk_native_render = true
 
-# Render the game scene natively instead of emulated xenos GPU (hot-reload)
-# Defaults to false because the native renderer is incomplete - the
-# emulated xenos GPU path renders normally when disabled.
+# Render the game scene natively with Vulkan (replaces xenos GPU emulation)
+# Defaults to true - native renderer is the only GPU path.
 bk_native_render_scene = true
 
 # Native scene debug visualization:
 #   0 = normal, 1 = clear only, 2 = solid color per item,
 #   3 = limit to 32 items, 4 = disable depth test
 bk_native_render_scene_debug = 0
+
+# Mesh context offsets in guest memory (for native renderer reverse-engineering)
+# Determined from CTX dump of ctx=0x40006D00:
+#   vb_addr@0x30, vb_bytes@0x10, ib_addr@0x38, ib_count@0x3C
+bk_native_mesh_ctx_vb_addr = 0x30
+bk_native_mesh_ctx_vb_bytes = 0x10
+bk_native_mesh_ctx_ib_addr = 0x38
+bk_native_mesh_ctx_ib_count = 0x3C
 
 # Guest FPS cap (0 = uncapped)
 bk_guest_fps_cap = 0

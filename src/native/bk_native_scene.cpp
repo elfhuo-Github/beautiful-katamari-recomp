@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <mutex>
 #include <vector>
 
@@ -26,16 +25,17 @@ uint64_t g_draw_sequence = 0;
 // These are Beautiful Katamari-specific and must match the guest's actual
 // MeshContext layout. Tunable via cvars for reverse-engineering.
 //
-// From ppc_recomp.116.cpp sub_824DF5F8 / sub_824E04B0 / sub_824E5568:
-//   r31 = r3 = mesh context pointer (observed: 0x40006D00)
-//   reads at r31 + 48 (0x30), r31 + 52 (0x34), r31 + 56 (0x38)
-//   reads at r31 + 13492 (0x3494), r31 + 14908 (0x3A3C)
-// Mesh context offsets (tunable via cvars for reverse-engineering)
+// Offset values were determined by dumping the guest mesh context at
+// ctx=0x40006D00:
+//   +0x10: vertex buffer byte count (4992)
+//   +0x30: vertex buffer address
+//   +0x38: index buffer address
+//   +0x3C: index count
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_addr, 0x30, "Beautiful Katamari",
     "Mesh context offset for vertex buffer address.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_bytes, 0x10, "Beautiful Katamari",
-    "Mesh context offset for vertex buffer byte count (from CTX dump: +0x10=4992).")
+    "Mesh context offset for vertex buffer byte count.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_addr, 0x38, "Beautiful Katamari",
     "Mesh context offset for index buffer address.")
@@ -88,8 +88,8 @@ bool ResolveSceneDrawItem(uint8_t* guest_base, DrawItem& item) {
   item.ib_data = guest_base + ib_addr;
 
   static int g_debug_count = 0;
-  if (g_debug_count < 20) {
-    fprintf(stderr, "=== bk native-render: VB RESOLVED ctx=0x%08X vb_addr=0x%08X vb_bytes=%u ib_addr=0x%08X ib_count=%u ===\n",
+  if (g_debug_count < 5) {
+    REXLOG_INFO("bk native-render: VB RESOLVED ctx=0x%08X vb_addr=0x%08X vb_bytes=%u ib_addr=0x%08X ib_count=%u",
                 item.ctx, vb_addr, vb_bytes, ib_addr, ib_count);
     g_debug_count++;
   }
@@ -121,7 +121,11 @@ uint32_t CaptureDynamicState(uint8_t* base, uint32_t ctx) {
 void OnFrameEnd(uint8_t* base, uint64_t frame_index,
                 const std::vector<DrawItem>& items) {
   (void)frame_index;
-  fprintf(stderr, "=== bk native-render: OnFrameEnd called items=%zu ===\n", items.size());
+  static int g_frame = 0;
+  g_frame++;
+  if (g_frame <= 5 || g_frame % 60 == 0) {
+    REXLOG_INFO("bk native-render: frame %d items=%zu", g_frame, items.size());
+  }
 
   std::lock_guard<std::mutex> lock(g_build_mutex);
 
@@ -146,8 +150,7 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
 
   g_scene = std::move(scene);
 
-  fprintf(stderr, "=== bk native-render: OnFrameEnd resolved=%d/%zu ===\n",
-          resolved, items.size());
+  REXLOG_INFO("bk native-render: OnFrameEnd resolved=%d/%zu", resolved, items.size());
 }
 
 uint64_t DrawSequence() { return g_draw_sequence; }

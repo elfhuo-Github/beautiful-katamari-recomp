@@ -4,15 +4,17 @@
 #=============================================================================
 # Usage: ./run.sh [options]
 #
+# The game uses the native Vulkan renderer by default (Xenia xenos GPU
+# emulation has been removed).
+#
 # Options:
-#   --native          Enable native renderer (default: enabled)
-#   --no-native       Use emulated xenos GPU instead
-#   --fps-cap=N       Cap frame rate (0 = uncapped)
-#   --debug=N         Debug visualization mode: 0-4
-#   --fullscreen      Fullscreen mode
-#   --windowed        Windowed mode
-#   --game-data-root=PATH   Path to game data (overrides config.toml)
-#   --help            Show this help
+#   --native-scene-disable   Disable native Vulkan rendering (no GPU path)
+#   --fps-cap=N              Cap frame rate (0 = uncapped)
+#   --debug=N                Debug visualization mode: 0-4
+#   --fullscreen             Fullscreen mode
+#   --windowed               Windowed mode
+#   --game-data-root=PATH    Path to game data (overrides config.toml)
+#   --help                   Show this help
 #=============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,13 +38,7 @@ FULLSCREEN=false
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --native)
-            NATIVE_RENDER=true
-            NATIVE_RENDER_SCENE=true
-            shift
-            ;;
-        --no-native)
-            NATIVE_RENDER=false
+        --native-scene-disable)
             NATIVE_RENDER_SCENE=false
             shift
             ;;
@@ -69,15 +65,16 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
+            echo "The game uses the native Vulkan renderer by default."
+            echo ""
             echo "Options:"
-            echo "  --native          Enable native renderer hook layer (default)"
-            echo "  --no-native       Use emulated xenos GPU instead"
-            echo "  --fps-cap=N       Cap frame rate (0 = uncapped)"
-            echo "  --debug=N         Debug visualization mode: 0-4"
-            echo "  --fullscreen      Fullscreen mode"
-            echo "  --windowed        Windowed mode"
-            echo "  --game-data-root=PATH   Path to game data (overrides config.toml)"
-            echo "  --help            Show this help"
+            echo "  --native-scene-disable   Disable native Vulkan rendering (no GPU path)"
+            echo "  --fps-cap=N              Cap frame rate (0 = uncapped)"
+            echo "  --debug=N                Debug visualization mode: 0-4"
+            echo "  --fullscreen             Fullscreen mode"
+            echo "  --windowed               Windowed mode"
+            echo "  --game-data-root=PATH    Path to game data (overrides config.toml)"
+            echo "  --help                   Show this help"
             exit 0
             ;;
         *)
@@ -97,7 +94,7 @@ if [ "$DEBUG_MODE" != "0" ]; then
 fi
 
 echo "============================================================================="
-echo "  Beautiful Katamari Recomp - Native Renderer"
+echo "  Beautiful Katamari Recomp - Native Vulkan Renderer"
 echo "============================================================================"
 echo ""
 echo "  Game data: $GAME_DATA_ROOT"
