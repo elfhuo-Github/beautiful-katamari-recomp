@@ -333,6 +333,13 @@ bool init_instance_and_surface() {
   ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
   VkPipelineColorBlendAttachmentState ca = {};
+  ca.blendEnable = VK_TRUE;
+  ca.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  ca.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  ca.colorBlendOp = VK_BLEND_OP_ADD;
+  ca.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+  ca.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  ca.alphaBlendOp = VK_BLEND_OP_ADD;
   ca.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                       VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
   VkPipelineColorBlendStateCreateInfo cb = {};
