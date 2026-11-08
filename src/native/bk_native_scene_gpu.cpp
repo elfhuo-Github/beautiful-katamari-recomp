@@ -937,7 +937,11 @@ void render_thread_func() {
 
     auto end = std::chrono::steady_clock::now();
     auto elapsed = end - start;
-    (void)elapsed;
+    // Cap render thread at 60 FPS (~16ms per frame) to prevent CPU spinning
+    constexpr auto kFrameTime = std::chrono::milliseconds(16);
+    if (elapsed < kFrameTime) {
+      std::this_thread::sleep_for(kFrameTime - elapsed);
+    }
   }
 
   g.render_thread_running = false;

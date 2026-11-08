@@ -42,8 +42,8 @@ REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_bytes, 0x10, "Beautiful Katamari",
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_addr, 0x38, "Beautiful Katamari",
     "Mesh context offset for index buffer address.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_count, 0x14, "Beautiful Katamari",
-    "Mesh context offset for index count (trying 0x14 instead of 0x3C).")
+REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_count, 0x3C, "Beautiful Katamari",
+    "Mesh context offset for index count.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 inline uint32_t MeshCtxVbAddr() { return rex::cvar::Query<uint32_t>("bk_native_mesh_ctx_vb_addr"); }
@@ -61,7 +61,7 @@ bool PlausibleVB(uint32_t addr, uint32_t bytes) {
 }
 
 bool PlausibleIB(uint32_t addr, uint32_t count) {
-  return addr != 0 && count > 0 && count < (4u << 20);
+  return addr != 0 && count > 0 && count < (100u << 10); // max 100K indices per item
 }
 
 bool ResolveSceneDrawItem(uint8_t* guest_base, DrawItem& item) {
