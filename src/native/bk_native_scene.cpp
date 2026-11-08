@@ -31,9 +31,10 @@ uint64_t g_draw_sequence = 0;
 //   +0x10: vertex buffer byte count (4992)
 //   +0x14: unknown (1673704)
 //   +0x18: vertex stride (8)
+//   +0x24: 524288 (index count?)
 //   +0x30: vertex buffer address
 //   +0x38: index buffer address
-//   +0x3C: index count (currently reads 1)
+//   +0x3C: index count (reads 1 - likely wrong)
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_addr, 0x30, "Beautiful Katamari",
     "Mesh context offset for vertex buffer address.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -43,13 +44,13 @@ REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_bytes, 0x10, "Beautiful Katamari",
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_addr, 0x38, "Beautiful Katamari",
     "Mesh context offset for index buffer address.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_count, 0x3C, "Beautiful Katamari",
+REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_count, 0x24, "Beautiful Katamari",
     "Mesh context offset for index count.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 // Camera view/projection matrix addresses in guest memory.
 // The game stores view_proj as 16 floats (column-major, 64 bytes).
-// Tunable via cvars for reverse-engineering. Set to 0 to use identity.
+// Tunable via cvars for reverse-engineering. Set to 0 to auto-scan.
 REXCVAR_DEFINE_UINT32(bk_native_camera_view_proj_addr, 0, "Beautiful Katamari",
     "Guest address of combined view/projection matrix (16 floats). 0 = auto-scan.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -59,10 +60,10 @@ REXCVAR_DEFINE_UINT32(bk_native_camera_view_addr, 0, "Beautiful Katamari",
 REXCVAR_DEFINE_UINT32(bk_native_camera_proj_addr, 0, "Beautiful Katamari",
     "Guest address of projection matrix (16 floats). 0 = identity.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_UINT32(bk_native_camera_scan_start, 0x82000000, "Beautiful Katamari",
+REXCVAR_DEFINE_UINT32(bk_native_camera_scan_start, 0x80000000, "Beautiful Katamari",
     "Guest memory start address for camera matrix auto-scan.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_UINT32(bk_native_camera_scan_end, 0x83000000, "Beautiful Katamari",
+REXCVAR_DEFINE_UINT32(bk_native_camera_scan_end, 0x88000000, "Beautiful Katamari",
     "Guest memory end address for camera matrix auto-scan.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
@@ -78,31 +79,61 @@ inline uint32_t CameraScanEnd() { return rex::cvar::Query<uint32_t>("bk_native_c
 
 // Scan guest memory for plausible camera matrices.
 // Looks for 16 consecutive floats that look like a view/projection matrix.
-// Returns the address if found, 0 otherwise.
+// Returns the first address found, 0 otherwise.
+// Logs all candidates found.
 uint32_t ScanCameraMatrix(uint8_t* guest_base, uint32_t start_addr, uint32_t end_addr) {
-  // Search in 4-byte steps for a matrix where:
-  // - Elements are reasonable magnitudes (0.001 to 1000)
-  // - Has some structure typical of view/proj matrices
+  int candidates = 0;
+  uint32_t best_addr = 0;
+  float best_score = 0.0f;
+
   for (uint32_t addr = start_addr; addr < end_addr - 64; addr += 4) {
     float m[16];
     bool ok = true;
+    bool effectively_zero = true;
     for (int i = 0; i < 16; i++) {
       uint32_t raw = 0;
       if (!GuestTryLoadU32(guest_base, addr + i * 4, &raw)) { ok = false; break; }
       uint32_t swapped = ((raw >> 24) & 0xFF) | ((raw >> 8) & 0xFF00) |
                          ((raw << 8) & 0xFF0000) | ((raw << 24) & 0xFF000000);
       m[i] = *reinterpret_cast<float*>(&swapped);
-      if (!std::isfinite(m[i]) || std::fabs(m[i]) > 10000.0f) { ok = false; break; }
+      if (!std::isfinite(m[i]) || std::fabs(m[i]) > 100000.0f) { ok = false; break; }
+      if (std::fabs(m[i]) > 0.0001f) effectively_zero = false;
     }
-    if (ok) {
-      // Heuristic: projection matrices often have specific patterns
-      // View matrices often have the last row as (0, 0, 0, 1) for translation
-      if (std::fabs(m[15] - 1.0f) < 0.001f && std::fabs(m[12]) < 100.0f &&
-          std::fabs(m[13]) < 100.0f && std::fabs(m[14]) < 100.0f) {
-        return addr;
-      }
+    if (!ok || effectively_zero) continue;
+
+    // Reject identity matrix (not a camera)
+    bool is_identity = true;
+    for (int i = 0; i < 16; i++) {
+      float expected = (i % 5 == 0) ? 1.0f : 0.0f;
+      if (std::fabs(m[i] - expected) > 0.001f) { is_identity = false; break; }
+    }
+    if (is_identity) continue;
+
+    // Score: projection matrices typically have specific structure
+    float score = 0.0f;
+    if (std::fabs(m[15] - 1.0f) < 0.1f) score += 1.0f;
+    if (std::fabs(m[12]) < 1000.0f && std::fabs(m[13]) < 1000.0f && std::fabs(m[14]) < 1000.0f)
+      score += 0.5f;
+    float max_val = 0.0f;
+    for (int i = 0; i < 16; i++) max_val = std::max(max_val, std::fabs(m[i]));
+    if (max_val > 0.001f && max_val < 100.0f) score += 0.5f;
+
+    candidates++;
+    if (score > best_score) {
+      best_score = score;
+      best_addr = addr;
+    }
+    if (candidates <= 10) {
+      fprintf(stderr, "=== bk native-render: Camera candidate at 0x%08X score=%.1f: %f %f %f %f ...\n",
+              addr, score, m[0], m[1], m[2], m[3]);
     }
   }
+  if (candidates > 0) {
+    fprintf(stderr, "=== bk native-render: Camera scan found %d candidates, best=0x%08X score=%.1f ===\n",
+            candidates, best_addr, best_score);
+    return best_addr;
+  }
+  fprintf(stderr, "=== bk native-render: Camera scan found no candidates ===\n");
   return 0;
 }
 
@@ -124,6 +155,22 @@ bool ReadMatrix4x4(uint8_t* guest_base, uint32_t addr, float out[16]) {
     out[i] = *reinterpret_cast<float*>(&swapped);
   }
   return true;
+}
+
+// Build a simple perspective projection matrix
+void BuildPerspectiveProjection(float out[16]) {
+  float aspect = 1280.0f / 720.0f;
+  float fov = 60.0f * 3.14159265f / 180.0f;
+  float near = 0.1f;
+  float far = 5000.0f;
+  float f = 1.0f / tanf(fov / 2.0f);
+  for (int i = 0; i < 16; i++) out[i] = 0.0f;
+  out[0] = f / aspect;
+  out[5] = f;
+  out[10] = (far + near) / (near - far);
+  out[11] = -1.0f;
+  out[14] = (2.0f * far * near) / (near - far);
+  out[15] = 0.0f;
 }
 
 bool PlausibleVB(uint32_t addr, uint32_t bytes) {
@@ -250,10 +297,14 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
   if (vp_addr != 0) {
     if (ReadMatrix4x4(base, vp_addr, scene.view_proj)) {
       // Successfully read combined view/proj
+      // Check if matrix is valid (not all zeros)
+      bool all_zero = true;
+      for (int i = 0; i < 16; i++) {
+        if (std::fabs(scene.view_proj[i]) > 0.0001f) { all_zero = false; break; }
+      }
+      if (all_zero) BuildPerspectiveProjection(scene.view_proj);
     } else {
-      // Fall back to identity
-      for (int i = 0; i < 16; i++)
-        scene.view_proj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+      BuildPerspectiveProjection(scene.view_proj);
     }
   } else if (view_addr != 0 && proj_addr != 0) {
     float view[16], proj[16];
@@ -269,13 +320,10 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
         }
       }
     } else {
-      for (int i = 0; i < 16; i++)
-        scene.view_proj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+      BuildPerspectiveProjection(scene.view_proj);
     }
   } else {
-    // Identity view/proj - no camera addresses configured
-    for (int i = 0; i < 16; i++)
-      scene.view_proj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    BuildPerspectiveProjection(scene.view_proj);
   }
   scene.cam_pos[0] = scene.cam_pos[1] = scene.cam_pos[2] = 0.0f;
 

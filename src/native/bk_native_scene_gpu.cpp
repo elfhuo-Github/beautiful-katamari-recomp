@@ -82,6 +82,11 @@ struct Gpu {
   VkBuffer vb = VK_NULL_HANDLE, ib = VK_NULL_HANDLE;
   VkDeviceMemory vbmem = VK_NULL_HANDLE, ibmem = VK_NULL_HANDLE;
 
+  // Depth image
+  VkImage depth_image = VK_NULL_HANDLE;
+  VkDeviceMemory depth_mem = VK_NULL_HANDLE;
+  std::vector<VkImageView> depth_views;
+
   // Staging buffers for vertex/index uploads (host-visible, coherent)
   VkBuffer stage_vb = VK_NULL_HANDLE;
   VkDeviceMemory stage_vbmem = VK_NULL_HANDLE;
@@ -300,16 +305,29 @@ bool init_instance_and_surface() {
   ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
   VkPipelineViewportStateCreateInfo vp = {};
-  vp.viewportCount = 0;
-  vp.scissorCount = 0;
-  vp.pViewports = nullptr;
-  vp.pScissors = nullptr;
+  vp.viewportCount = 1;
+  vp.scissorCount = 1;
+  VkViewport vp_viewport = {};
+  VkRect2D vp_scissor = {};
+  vp.pViewports = &vp_viewport;
+  vp.pScissors = &vp_scissor;
 
   VkPipelineRasterizationStateCreateInfo rs = {};
   rs.polygonMode = VK_POLYGON_MODE_FILL;
   rs.cullMode = VK_CULL_MODE_BACK_BIT;
   rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rs.lineWidth = 1.0f;
+  rs.depthClampEnable = VK_FALSE;
+  rs.rasterizerDiscardEnable = VK_FALSE;
+  rs.depthBiasEnable = VK_FALSE;
+
+  VkPipelineDepthStencilStateCreateInfo ds = {};
+  ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+  ds.depthTestEnable = VK_TRUE;
+  ds.depthWriteEnable = VK_TRUE;
+  ds.depthCompareOp = VK_COMPARE_OP_LESS;
+  ds.depthBoundsTestEnable = VK_FALSE;
+  ds.stencilTestEnable = VK_FALSE;
 
   VkPipelineMultisampleStateCreateInfo ms = {};
   ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -321,29 +339,43 @@ bool init_instance_and_surface() {
   cb.attachmentCount = 1;
   cb.pAttachments = &ca;
 
-  // Render pass
-  VkAttachmentDescription att = {};
-  att.format = VK_FORMAT_B8G8R8A8_UNORM;
-  att.samples = VK_SAMPLE_COUNT_1_BIT;
-  att.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  att.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  // Render pass with depth attachment
+  VkAttachmentDescription atts[2] = {};
+  atts[0].format = VK_FORMAT_B8G8R8A8_UNORM;
+  atts[0].samples = VK_SAMPLE_COUNT_1_BIT;
+  atts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  atts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  atts[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  atts[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  atts[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  atts[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+  atts[1].format = VK_FORMAT_D32_SFLOAT;
+  atts[1].samples = VK_SAMPLE_COUNT_1_BIT;
+  atts[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  atts[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  atts[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  atts[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  atts[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  atts[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
   VkAttachmentReference aref = {};
   aref.attachment = 0;
   aref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+  VkAttachmentReference dref = {};
+  dref.attachment = 1;
+  dref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
   VkSubpassDescription spd = {};
   spd.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
   spd.colorAttachmentCount = 1;
   spd.pColorAttachments = &aref;
+  spd.pDepthStencilAttachment = &dref;
 
   VkRenderPassCreateInfo rpci = {};
-  rpci.attachmentCount = 1;
-  rpci.pAttachments = &att;
+  rpci.attachmentCount = 2;
+  rpci.pAttachments = atts;
   rpci.subpassCount = 1;
   rpci.pSubpasses = &spd;
   if (vkCreateRenderPass(g.device, &rpci, nullptr, &g.render_pass) != VK_SUCCESS) {
@@ -368,6 +400,7 @@ bool init_instance_and_surface() {
   gpci.pViewportState = &vp;
   gpci.pRasterizationState = &rs;
   gpci.pMultisampleState = &ms;
+  gpci.pDepthStencilState = &ds;
   gpci.pColorBlendState = &cb;
   gpci.pDynamicState = &dynamicState;
   gpci.layout = g.layout;
@@ -650,13 +683,67 @@ bool create_swapchain() {
       return false;
   }
 
+  // Create depth image and views
+  VkPhysicalDeviceMemoryProperties mp;
+  vkGetPhysicalDeviceMemoryProperties(g.phys, &mp);
+  VkImageCreateInfo dic = {};
+  dic.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  dic.imageType = VK_IMAGE_TYPE_2D;
+  dic.format = VK_FORMAT_D32_SFLOAT;
+  dic.extent = {g.width, g.height, 1};
+  dic.mipLevels = 1;
+  dic.arrayLayers = 1;
+  dic.samples = VK_SAMPLE_COUNT_1_BIT;
+  dic.tiling = VK_IMAGE_TILING_OPTIMAL;
+  dic.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+  dic.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  dic.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  if (vkCreateImage(g.device, &dic, nullptr, &g.depth_image) != VK_SUCCESS)
+    return false;
+  VkMemoryRequirements dm_req;
+  vkGetImageMemoryRequirements(g.device, g.depth_image, &dm_req);
+  VkMemoryAllocateInfo dm_ai = {};
+  dm_ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  dm_ai.allocationSize = dm_req.size;
+  uint32_t dm_ti = 0;
+  for (uint32_t j = 0; j < mp.memoryTypeCount; j++) {
+    if ((dm_req.memoryTypeBits & (1u << j)) &&
+        (mp.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+      dm_ti = j;
+      break;
+    }
+  }
+  dm_ai.memoryTypeIndex = dm_ti;
+  if (vkAllocateMemory(g.device, &dm_ai, nullptr, &g.depth_mem) != VK_SUCCESS)
+    return false;
+  if (vkBindImageMemory(g.device, g.depth_image, g.depth_mem, 0) != VK_SUCCESS)
+    return false;
+
+  g.depth_views.resize(sc_img_count);
+  for (uint32_t i = 0; i < sc_img_count; i++) {
+    VkImageViewCreateInfo divci = {};
+    divci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    divci.image = g.depth_image;
+    divci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    divci.format = VK_FORMAT_D32_SFLOAT;
+    divci.components = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                        VK_COMPONENT_SWIZZLE_IDENTITY,
+                        VK_COMPONENT_SWIZZLE_IDENTITY,
+                        VK_COMPONENT_SWIZZLE_IDENTITY};
+    divci.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
+    if (vkCreateImageView(g.device, &divci, nullptr, &g.depth_views[i]) !=
+        VK_SUCCESS)
+      return false;
+  }
+
   g.swapchain_fbs.resize(sc_img_count);
   for (uint32_t i = 0; i < sc_img_count; i++) {
+    VkImageView attachments[2] = {g.swapchain_views[i], g.depth_views[i]};
     VkFramebufferCreateInfo fci = {};
     fci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     fci.renderPass = g.render_pass;
-    fci.attachmentCount = 1;
-    fci.pAttachments = &g.swapchain_views[i];
+    fci.attachmentCount = 2;
+    fci.pAttachments = attachments;
     fci.width = g.width;
     fci.height = g.height;
     fci.layers = 1;
@@ -677,6 +764,13 @@ void destroy_swapchain() {
   for (auto iv : g.swapchain_views)
     if (iv) vkDestroyImageView(g.device, iv, nullptr);
   g.swapchain_views.clear();
+  for (auto dv : g.depth_views)
+    if (dv) vkDestroyImageView(g.device, dv, nullptr);
+  g.depth_views.clear();
+  if (g.depth_image) vkDestroyImage(g.device, g.depth_image, nullptr);
+  g.depth_image = VK_NULL_HANDLE;
+  if (g.depth_mem) vkFreeMemory(g.device, g.depth_mem, nullptr);
+  g.depth_mem = VK_NULL_HANDLE;
   if (g.swapchain)
     vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
   g.swapchain = VK_NULL_HANDLE;
@@ -710,6 +804,8 @@ void shutdown_vulkan() {
   if (g.stage_ib) vkDestroyBuffer(g.device, g.stage_ib, nullptr);
   if (g.stage_ibmem) vkFreeMemory(g.device, g.stage_ibmem, nullptr);
 
+  if (g.depth_image) vkDestroyImage(g.device, g.depth_image, nullptr);
+  if (g.depth_mem) vkFreeMemory(g.device, g.depth_mem, nullptr);
   vkDestroyBuffer(g.device, g.vb, nullptr);
   vkFreeMemory(g.device, g.vbmem, nullptr);
   if (g.ib) vkDestroyBuffer(g.device, g.ib, nullptr);
@@ -833,9 +929,11 @@ void render_thread_func() {
       rpbi.renderPass = g.render_pass;
       rpbi.framebuffer = g.swapchain_fbs[image_index];
       rpbi.renderArea = {{0, 0}, {g.width, g.height}};
-      VkClearValue clear = {{{0.1f, 0.1f, 0.15f, 1.0f}}};
-      rpbi.clearValueCount = 1;
-      rpbi.pClearValues = &clear;
+      VkClearValue clear[2] = {};
+      clear[0].color = {{0.1f, 0.1f, 0.15f, 1.0f}};
+      clear[1].depthStencil = {1.0f, 0};
+      rpbi.clearValueCount = 2;
+      rpbi.pClearValues = clear;
       vkCmdBeginRenderPass(g.cmd[fi], &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
       if (g.pipeline != VK_NULL_HANDLE && !scene.items.empty()) {
