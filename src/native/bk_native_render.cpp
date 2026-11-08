@@ -32,10 +32,6 @@ extern "C" void __real___imp__VdEnableRingBufferRPtrWriteBack(PPCContext&, uint8
 extern "C" void __real___imp__sub_824E04B0(PPCContext&, uint8_t*);
 extern "C" void __real___imp__sub_824E5568(PPCContext&, uint8_t*);
 extern "C" void __real___imp__sub_824DF5F8(PPCContext&, uint8_t*);
-extern "C" void __real___imp__sub_824DF8C8(PPCContext&, uint8_t*);
-extern "C" void __real___imp__sub_824DFB70(PPCContext&, uint8_t*);
-extern "C" void __real___imp__sub_824E0110(PPCContext&, uint8_t*);
-extern "C" void __real___imp__sub_824DFC48(PPCContext&, uint8_t*);
 
 namespace bk::native_render {
 REXCVAR_DEFINE_BOOL(bk_native_render, true, "Beautiful Katamari", "Enable the Beautiful Katamari native renderer hook layer.")
@@ -188,68 +184,6 @@ extern "C" void __wrap___imp__sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   g_in_hook = false;
 }
 
-// Additional draw function hooks - Katamari uses DrawVerticesUP for most draws
-// (83-84% per katamari-nx analysis). These might be additional draw entry points.
-extern "C" void __wrap___imp__sub_824DF8C8(PPCContext& ctx, uint8_t* base) {
-  static thread_local bool g_in_hook = false;
-  if (g_in_hook) return;
-  g_in_hook = true;
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({ctx.r3.u32, 3, ctx.r4.u32, 0});
-  }
-
-  __real___imp__sub_824DF8C8(ctx, base);
-  g_in_hook = false;
-}
-
-extern "C" void __wrap___imp__sub_824DFB70(PPCContext& ctx, uint8_t* base) {
-  static thread_local bool g_in_hook = false;
-  if (g_in_hook) return;
-  g_in_hook = true;
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({ctx.r3.u32, 4, ctx.r4.u32, 0});
-  }
-
-  __real___imp__sub_824DFB70(ctx, base);
-  g_in_hook = false;
-}
-
-extern "C" void __wrap___imp__sub_824E0110(PPCContext& ctx, uint8_t* base) {
-  static thread_local bool g_in_hook = false;
-  if (g_in_hook) return;
-  g_in_hook = true;
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({ctx.r3.u32, 5, ctx.r4.u32, 0});
-  }
-
-  __real___imp__sub_824E0110(ctx, base);
-  g_in_hook = false;
-}
-
-extern "C" void __wrap___imp__sub_824DFC48(PPCContext& ctx, uint8_t* base) {
-  static thread_local bool g_in_hook = false;
-  if (g_in_hook) return;
-  g_in_hook = true;
-
-  if (rex::cvar::GetFlagByName("bk_native_render") == "true" &&
-      rex::cvar::GetFlagByName("bk_native_render_scene") == "true") {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_current_frame.push_back({ctx.r3.u32, 6, ctx.r4.u32, 0});
-  }
-
-  __real___imp__sub_824DFC48(ctx, base);
-  g_in_hook = false;
-}
-
 // Wrappers for bare sub_* symbol names (weak aliases of __imp__sub_*).
 // --wrap works per-symbol-name; guest code may reference either name.
 extern "C" void __wrap_sub_824E04B0(PPCContext& ctx, uint8_t* base) {
@@ -260,18 +194,6 @@ extern "C" void __wrap_sub_824E5568(PPCContext& ctx, uint8_t* base) {
 }
 extern "C" void __wrap_sub_824DF5F8(PPCContext& ctx, uint8_t* base) {
   __wrap___imp__sub_824DF5F8(ctx, base);
-}
-extern "C" void __wrap_sub_824DF8C8(PPCContext& ctx, uint8_t* base) {
-  __wrap___imp__sub_824DF8C8(ctx, base);
-}
-extern "C" void __wrap_sub_824DFB70(PPCContext& ctx, uint8_t* base) {
-  __wrap___imp__sub_824DFB70(ctx, base);
-}
-extern "C" void __wrap_sub_824E0110(PPCContext& ctx, uint8_t* base) {
-  __wrap___imp__sub_824E0110(ctx, base);
-}
-extern "C" void __wrap_sub_824DFC48(PPCContext& ctx, uint8_t* base) {
-  __wrap___imp__sub_824DFC48(ctx, base);
 }
 
 //=============================================================================
@@ -289,10 +211,6 @@ void Install() {
     REXLOG_INFO("bk native-render: hooked sub_824E04B0 (pre-swap capture)");
     REXLOG_INFO("bk native-render: hooked sub_824E5568 (mesh submission)");
     REXLOG_INFO("bk native-render: hooked sub_824DF5F8 (draw submission)");
-    REXLOG_INFO("bk native-render: hooked sub_824DF8C8 (additional draw)");
-    REXLOG_INFO("bk native-render: hooked sub_824DFB70 (additional draw)");
-    REXLOG_INFO("bk native-render: hooked sub_824E0110 (additional draw)");
-    REXLOG_INFO("bk native-render: hooked sub_824DFC48 (additional draw)");
   }
   if (native_scene) bk::native_gpu::Install();
 }
