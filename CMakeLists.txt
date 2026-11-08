@@ -63,6 +63,14 @@ if(UNIX AND NOT APPLE)
         -Wl,--wrap=sub_824E5568
         -Wl,--wrap=__imp__sub_824DF5F8
         -Wl,--wrap=sub_824DF5F8
+        -Wl,--wrap=__imp__sub_824DF8C8
+        -Wl,--wrap=sub_824DF8C8
+        -Wl,--wrap=__imp__sub_824DFB70
+        -Wl,--wrap=sub_824DFB70
+        -Wl,--wrap=__imp__sub_824E0110
+        -Wl,--wrap=sub_824E0110
+        -Wl,--wrap=__imp__sub_824DFC48
+        -Wl,--wrap=sub_824DFC48
     )
 endif()
 
