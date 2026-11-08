@@ -139,17 +139,6 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     g_frames_since_fps = 0;
   }
 
-  // Debug: log first frame's contexts for reverse-engineering
-  static bool g_first_frame_logged = false;
-  if (!g_first_frame_logged && !items.empty()) {
-    g_first_frame_logged = true;
-    fprintf(stderr, "=== bk native-render: First frame contexts ===\n");
-    for (size_t i = 0; i < items.size() && i < 10; i++) {
-      fprintf(stderr, "  item[%zu] ctx=0x%08X kind=%u\n",
-              i, items[i].ctx, items[i].vb_obj);
-    }
-  }
-
   std::lock_guard<std::mutex> lock(g_build_mutex);
 
   FrameScene scene;
@@ -160,8 +149,7 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     scene.view_proj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
   scene.cam_pos[0] = scene.cam_pos[1] = scene.cam_pos[2] = 0.0f;
 
-  // Resolve each item (read guest memory for VB/IB pointers).
-  // Items that fail resolution are dropped for this frame.
+  // Resolve count (updated below during resolution)
   int resolved = 0;
   int failed_ctx[16] = {0};
   int failed_count = 0;
@@ -185,6 +173,19 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     }
     fprintf(stderr, "=== bk native-render: total items=%zu resolved=%d failed=%d ===\n",
             items.size(), resolved, failed_count);
+  }
+
+  // Debug: log IB count info on first frame
+  static bool g_ib_debug = false;
+  if (!g_ib_debug && resolved > 0) {
+    g_ib_debug = true;
+    fprintf(stderr, "=== bk native-render: IB count debug ===\n");
+    for (const auto& src : items) {
+      if (src.ib_count > 0 && src.ib_count < 10000) {
+        fprintf(stderr, "  ctx=0x%08X ib_count=%u ib_addr=0x%08X vb_bytes=%u\n",
+                src.ctx, src.ib_count, src.ib_addr, src.vb_bytes);
+      }
+    }
   }
 
   g_scene = std::move(scene);
