@@ -157,20 +157,23 @@ bool ReadMatrix4x4(uint8_t* guest_base, uint32_t addr, float out[16]) {
   return true;
 }
 
-// Build a simple perspective projection matrix
+// Build a simple orthographic projection matrix (better for UI / 2D elements)
 void BuildPerspectiveProjection(float out[16]) {
   float aspect = 1280.0f / 720.0f;
-  float fov = 60.0f * 3.14159265f / 180.0f;
+  float left = -aspect;
+  float right = aspect;
+  float bottom = -1.0f;
+  float top = 1.0f;
   float near = 0.1f;
-  float far = 5000.0f;
-  float f = 1.0f / tanf(fov / 2.0f);
+  float far = 100.0f;
   for (int i = 0; i < 16; i++) out[i] = 0.0f;
-  out[0] = f / aspect;
-  out[5] = f;
-  out[10] = (far + near) / (near - far);
-  out[11] = -1.0f;
-  out[14] = (2.0f * far * near) / (near - far);
-  out[15] = 0.0f;
+  out[0] = 2.0f / (right - left);
+  out[5] = 2.0f / (top - bottom);
+  out[10] = -2.0f / (far - near);
+  out[12] = -(right + left) / (right - left);
+  out[13] = -(top + bottom) / (top - bottom);
+  out[14] = -(far + near) / (far - near);
+  out[15] = 1.0f;
 }
 
 bool PlausibleVB(uint32_t addr, uint32_t bytes) {

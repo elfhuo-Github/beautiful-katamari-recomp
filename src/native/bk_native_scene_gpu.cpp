@@ -314,7 +314,7 @@ bool init_instance_and_surface() {
 
   VkPipelineRasterizationStateCreateInfo rs = {};
   rs.polygonMode = VK_POLYGON_MODE_FILL;
-  rs.cullMode = VK_CULL_MODE_BACK_BIT;
+  rs.cullMode = VK_CULL_MODE_NONE;
   rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rs.lineWidth = 1.0f;
   rs.depthClampEnable = VK_FALSE;
@@ -323,9 +323,9 @@ bool init_instance_and_surface() {
 
   VkPipelineDepthStencilStateCreateInfo ds = {};
   ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-  ds.depthTestEnable = VK_TRUE;
-  ds.depthWriteEnable = VK_TRUE;
-  ds.depthCompareOp = VK_COMPARE_OP_LESS;
+  ds.depthTestEnable = VK_FALSE;
+  ds.depthWriteEnable = VK_FALSE;
+  ds.depthCompareOp = VK_COMPARE_OP_ALWAYS;
   ds.depthBoundsTestEnable = VK_FALSE;
   ds.stencilTestEnable = VK_FALSE;
 
