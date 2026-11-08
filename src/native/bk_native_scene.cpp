@@ -179,10 +179,12 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
   static int g_unresolved_frame = 0;
   if (failed_count > 0 && (g_frame - g_unresolved_frame) >= 60) {
     g_unresolved_frame = g_frame;
-    fprintf(stderr, "=== bk native-render: Unresolved contexts ===\n");
+    fprintf(stderr, "=== bk native-render: UNRESOLVED contexts (frame %d) ===\n", g_frame);
     for (int i = 0; i < failed_count; i++) {
-      fprintf(stderr, "  ctx=0x%08X\n", failed_ctx[i]);
+      fprintf(stderr, "  ctx=0x%08X (item kind=%u)\n", failed_ctx[i], 0);
     }
+    fprintf(stderr, "=== bk native-render: total items=%zu resolved=%d failed=%d ===\n",
+            items.size(), resolved, failed_count);
   }
 
   g_scene = std::move(scene);
