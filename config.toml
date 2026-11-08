@@ -41,7 +41,7 @@ bk_native_render_scene_debug = 0
 bk_native_mesh_ctx_vb_addr = 0x30
 bk_native_mesh_ctx_vb_bytes = 0x10
 bk_native_mesh_ctx_ib_addr = 0x38
-bk_native_mesh_ctx_ib_count = 0x3C
+bk_native_mesh_ctx_ib_count = 0x14
 
 # Guest FPS cap (60 = capped at 60, 0 = uncapped)
 bk_guest_fps_cap = 60.0

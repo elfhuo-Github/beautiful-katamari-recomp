@@ -26,12 +26,13 @@ uint64_t g_draw_sequence = 0;
 // These are Beautiful Katamari-specific and must match the guest's actual
 // MeshContext layout. Tunable via cvars for reverse-engineering.
 //
-// Offset values were determined by dumping the guest mesh context at
-// ctx=0x40006D00:
+// Offset values from CTX dump of ctx=0x40006D00:
 //   +0x10: vertex buffer byte count (4992)
+//   +0x14: unknown (1673704 - possible index count * 4?)
+//   +0x18: vertex stride (8)
 //   +0x30: vertex buffer address
 //   +0x38: index buffer address
-//   +0x3C: index count
+//   +0x3C: index count (currently reads 1 - likely wrong offset)
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_addr, 0x30, "Beautiful Katamari",
     "Mesh context offset for vertex buffer address.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -41,8 +42,8 @@ REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_vb_bytes, 0x10, "Beautiful Katamari",
 REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_addr, 0x38, "Beautiful Katamari",
     "Mesh context offset for index buffer address.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_count, 0x3C, "Beautiful Katamari",
-    "Mesh context offset for index count.")
+REXCVAR_DEFINE_UINT32(bk_native_mesh_ctx_ib_count, 0x14, "Beautiful Katamari",
+    "Mesh context offset for index count (trying 0x14 instead of 0x3C).")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 inline uint32_t MeshCtxVbAddr() { return rex::cvar::Query<uint32_t>("bk_native_mesh_ctx_vb_addr"); }
@@ -73,11 +74,29 @@ bool ResolveSceneDrawItem(uint8_t* guest_base, DrawItem& item) {
   bool ib_ok = ReadCtxU32(guest_base, item.ctx, MeshCtxIbAddr(), &ib_addr);
   bool ib_count_ok = ReadCtxU32(guest_base, item.ctx, MeshCtxIbCount(), &ib_count);
 
+  // Debug: log raw reads first 5 times
+  static int g_read_debug = 0;
+  if (g_read_debug < 5) {
+    fprintf(stderr, "=== bk native-render: RAW ctx=0x%08X vb@0x%X=0x%08X vb_bytes@0x%X=%u ib@0x%X=0x%08X ib_count@0x%X=%u ===\n",
+            item.ctx,
+            MeshCtxVbAddr(), vb_addr,
+            MeshCtxVbBytes(), vb_bytes,
+            MeshCtxIbAddr(), ib_addr,
+            MeshCtxIbCount(), ib_count);
+    g_read_debug++;
+  }
+
   if (!vb_ok || !vb_bytes_ok || !ib_ok || !ib_count_ok) {
     return false; // guest memory fault, try again later
   }
 
   if (!PlausibleVB(vb_addr, vb_bytes)) {
+    static int g_impl_count = 0;
+    if (g_impl_count < 10) {
+      fprintf(stderr, "=== bk native-render: IMPLausible VB ctx=0x%08X vb_addr=0x%08X vb_bytes=%u ===\n",
+              item.ctx, vb_addr, vb_bytes);
+      g_impl_count++;
+    }
     return false; // not a valid vertex buffer yet
   }
 
@@ -89,8 +108,8 @@ bool ResolveSceneDrawItem(uint8_t* guest_base, DrawItem& item) {
   item.ib_data = guest_base + ib_addr;
 
   static int g_debug_count = 0;
-  if (g_debug_count < 5) {
-    REXLOG_INFO("bk native-render: VB RESOLVED ctx=0x%08X vb_addr=0x%08X vb_bytes=%u ib_addr=0x%08X ib_count=%u",
+  if (g_debug_count < 10) {
+    fprintf(stderr, "=== bk native-render: VB RESOLVED ctx=0x%08X vb_addr=0x%08X vb_bytes=%u ib_addr=0x%08X ib_count=%u ===\n",
                 item.ctx, vb_addr, vb_bytes, ib_addr, ib_count);
     g_debug_count++;
   }
@@ -128,17 +147,6 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
   g_frame++;
   g_frames_since_fps++;
 
-  // FPS report every second
-  auto now = std::chrono::steady_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_last_fps_time);
-  if (elapsed >= std::chrono::milliseconds(1000)) {
-    double fps = g_frames_since_fps * 1000.0 / elapsed.count();
-    fprintf(stderr, "=== bk native-render: FPS=%.1f frame=%d items=%zu resolved=%d/%zu ===\n",
-            fps, g_frame, items.size(), 0, items.size());
-    g_last_fps_time = now;
-    g_frames_since_fps = 0;
-  }
-
   std::lock_guard<std::mutex> lock(g_build_mutex);
 
   FrameScene scene;
@@ -149,7 +157,8 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     scene.view_proj[i] = (i % 5 == 0) ? 1.0f : 0.0f;
   scene.cam_pos[0] = scene.cam_pos[1] = scene.cam_pos[2] = 0.0f;
 
-  // Resolve count (updated below during resolution)
+  // Resolve each item (read guest memory for VB/IB pointers).
+  // Items that fail resolution are dropped for this frame.
   int resolved = 0;
   int failed_ctx[16] = {0};
   int failed_count = 0;
@@ -161,6 +170,19 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     } else if (failed_count < 8) {
       failed_ctx[failed_count++] = item.ctx;
     }
+  }
+
+  g_scene = std::move(scene);
+
+  // FPS report every second (after resolution)
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_last_fps_time);
+  if (elapsed >= std::chrono::milliseconds(1000)) {
+    double fps = g_frames_since_fps * 1000.0 / elapsed.count();
+    fprintf(stderr, "=== bk native-render: FPS=%.1f frame=%d items=%zu resolved=%d/%zu ===\n",
+            fps, g_frame, items.size(), resolved, items.size());
+    g_last_fps_time = now;
+    g_frames_since_fps = 0;
   }
 
   // Log unresolved contexts once per second
@@ -181,14 +203,12 @@ void OnFrameEnd(uint8_t* base, uint64_t frame_index,
     g_ib_debug = true;
     fprintf(stderr, "=== bk native-render: IB count debug ===\n");
     for (const auto& src : items) {
-      if (src.ib_count > 0 && src.ib_count < 10000) {
+      if (src.ib_count > 0 && src.ib_count < 1000000) {
         fprintf(stderr, "  ctx=0x%08X ib_count=%u ib_addr=0x%08X vb_bytes=%u\n",
                 src.ctx, src.ib_count, src.ib_addr, src.vb_bytes);
       }
     }
   }
-
-  g_scene = std::move(scene);
 }
 
 uint64_t DrawSequence() { return g_draw_sequence; }
