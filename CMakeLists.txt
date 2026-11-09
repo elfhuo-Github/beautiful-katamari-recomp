@@ -41,152 +41,14 @@ endif()
 
 # GPU_PLUGINS xenos stages librexgpu-xenos.so next to the executable and is
 # what the runtime dlopen()s when the `gpu_plugin` cvar is set to "xenos".
-# Skip codegen - generated sources already exist in generated/default/
-set(GENERATED_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_init.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_register.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.0.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.1.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.2.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.3.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.4.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.5.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.6.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.7.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.8.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.9.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.10.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.11.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.12.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.13.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.14.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.15.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.16.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.17.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.18.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.19.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.20.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.21.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.22.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.23.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.24.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.25.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.26.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.27.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.28.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.29.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.30.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.31.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.32.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.33.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.34.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.35.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.36.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.37.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.38.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.39.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.40.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.41.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.42.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.43.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.44.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.45.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.46.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.47.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.48.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.49.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.50.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.51.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.52.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.53.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.54.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.55.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.56.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.57.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.58.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.59.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.60.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.61.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.62.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.63.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.64.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.65.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.66.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.67.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.68.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.69.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.70.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.71.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.72.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.73.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.74.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.75.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.76.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.77.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.78.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.79.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.80.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.81.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.82.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.83.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.84.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.85.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.86.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.87.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.88.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.89.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.90.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.91.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.92.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.93.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.94.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.95.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.96.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.97.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.98.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.99.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.100.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.101.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.102.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.103.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.104.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.105.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.106.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.107.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.108.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.109.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.110.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.111.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.112.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.113.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.114.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.115.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.116.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.117.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.118.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.119.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.120.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.121.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.122.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.123.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.124.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.125.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.126.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.127.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.128.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.129.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.130.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.131.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.132.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default/beautiful_katamari_recomp.133.cpp
-)
-add_library(beautiful_katamari_recomp OBJECT ${GENERATED_SOURCES})
-target_include_directories(beautiful_katamari_recomp PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default)
-target_link_libraries(beautiful_katamari_recomp PRIVATE rex::runtime)
-target_link_libraries(beautiful_katamari PRIVATE beautiful_katamari_recomp)
+#
+# rexglue_setup_target() is what wires the host application together: it adds
+# the SDK's windowed_app_main_sdl.cpp (main()) and rex_app.cpp (ReXApp base
+# class, whose out-of-line virtuals are NOT part of librexruntime), builds the
+# recompiled-guest object library from generated/default/sources.cmake, links
+# rex::runtime, and stages the GPU plugin.  Rolling this by hand silently
+# drops the host sources and fails at link time with undefined rex::ReXApp.
+rexglue_setup_target(beautiful_katamari GPU_PLUGINS xenos)
 
 
 # src/window_title.cpp interposes rex::ui::Presenter::RefreshGuestOutput (the
@@ -227,8 +89,12 @@ endif()
 
 # Native renderer include paths.
 target_include_directories(beautiful_katamari PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/generated/default
     src/native
     src/shaders
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rexglue-sdk/thirdparty/spdlog/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rexglue-sdk/thirdparty/fmt/include
 )
 
 # When building the SDK from source, the SDK's install() step is what normally
